@@ -1,0 +1,112 @@
+﻿<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <defs>
+    <linearGradient id="fos-bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2563eb" />
+      <stop offset="55%" stop-color="#4f46e5" />
+      <stop offset="100%" stop-color="#0f172a" />
+    </linearGradient>
+    <linearGradient id="fos-glow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8" />
+      <stop offset="100%" stop-color="#818cf8" />
+    </linearGradient>
+    <filter id="fos-shadow" x="-10%" y="-10%" width="120%" height="125%">
+      <feDropShadow dx="0" dy="16" stdDeviation="18" flood-color="#020617" flood-opacity="0.45" />
+    </filter>
+  </defs>
+
+  <style>
+    @keyframes spinClockwise {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+    @keyframes spinCounter {
+      from { transform: rotate(360deg); }
+      to { transform: rotate(0deg); }
+    }
+    .orbit-inner {
+      transform-origin: 316px 336px;
+      animation: spinClockwise 6s linear infinite;
+    }
+    .orbit-outer {
+      transform-origin: 316px 336px;
+      animation: spinCounter 10s linear infinite;
+    }
+  </style>
+
+  <!-- Squircle Exterior con Resplandor de Borde -->
+  <rect x="24" y="24" width="464" height="464" rx="112" fill="url(#fos-bg)" />
+  <rect x="24" y="24" width="464" height="464" rx="112" stroke="rgba(255, 255, 255, 0.25)" stroke-width="4" />
+
+  <!-- Documento y Elementos 'F' + 'OS' -->
+  <g filter="url(#fos-shadow)">
+    <!-- Hoja Base de Factura Electrónica -->
+    <path
+      d="M120 108C120 90.327 134.327 76 152 76H296C302.365 76 308.47 78.5286 312.971 83.0294L388.971 159.029C393.471 163.53 396 169.635 396 176V396C396 413.673 381.673 428 364 428H152C134.327 428 120 413.673 120 396V108Z"
+      fill="#0F172A"
+      fill-opacity="0.55"
+      stroke="rgba(255,255,255,0.25)"
+      stroke-width="3"
+    />
+
+    <!-- Pestaña Superior Plegada de la Factura -->
+    <path
+      d="M292 76V148C292 159.046 300.954 168 312 168H384L292 76Z"
+      fill="#38BDF8"
+      fill-opacity="0.85"
+    />
+
+    <!-- Columna Vertebral de la 'F' -->
+    <rect x="170" y="190" width="36" height="160" rx="18" fill="#FFFFFF" />
+
+    <!-- Barra Superior de la 'F' -->
+    <rect x="170" y="190" width="138" height="34" rx="17" fill="#FFFFFF" />
+
+    <!-- Barra Media de la 'F' (Degradado Neón) -->
+    <rect x="170" y="254" width="102" height="34" rx="17" fill="url(#fos-glow)" />
+
+    <!-- Núcleo Spark de Procesamiento 'OS' -->
+    <circle cx="316" cy="336" r="30" fill="#38BDF8" />
+
+    <!-- Rueda Orbital Interna (Giro Rápido en Sentido Horario) -->
+    <circle
+      class="orbit-inner"
+      cx="316"
+      cy="336"
+      r="48"
+      stroke="#38BDF8"
+      stroke-width="10"
+      stroke-opacity="0.8"
+      stroke-dasharray="16 14"
+    >
+      <animateTransform
+        attributeName="transform"
+        type="rotate"
+        from="0 316 336"
+        to="360 316 336"
+        dur="6s"
+        repeatCount="indefinite"
+      />
+    </circle>
+
+    <!-- Rueda Orbital Externa Mayor (Giro en Sentido Antihorario) -->
+    <circle
+      class="orbit-outer"
+      cx="316"
+      cy="336"
+      r="68"
+      stroke="#67E8F9"
+      stroke-width="8"
+      stroke-opacity="0.55"
+      stroke-dasharray="24 18"
+    >
+      <animateTransform
+        attributeName="transform"
+        type="rotate"
+        from="360 316 336"
+        to="0 316 336"
+        dur="10s"
+        repeatCount="indefinite"
+      />
+    </circle>
+  </g>
+</svg>
