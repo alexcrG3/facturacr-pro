@@ -327,6 +327,8 @@ function SettingsPage() {
           const estEmail = (activeEstablishment.email || "").toLowerCase().trim();
           const estCode = (activeEstablishment.code || "").toLowerCase().trim();
           const estDomain = estEmail.includes("@") ? estEmail.split("@")[1] : "";
+          // Lista negra de dominios genéricos públicos que NUNCA deben usarse para agrupar inquilinos
+          const isGenericDomain = ["gmail.com", "hotmail.com", "outlook.com", "yahoo.com", "icloud.com", "live.com"].includes(estDomain);
 
           filtered = data.filter((p: any) => {
             const pEmail = (p.email || "").toLowerCase().trim();
@@ -340,17 +342,16 @@ function SettingsPage() {
               return !hideSuperAdminInTeam;
             }
 
-            // 1. Vinculación directa en base de datos por establishment_id
-            if (p.establishment_id && p.establishment_id === estId) return true;
+            // 1. Vinculación directa en base de datos por establishment_id (FUENTE DE VERDAD PRIMARIA)
+            if (p.establishment_id) {
+              return p.establishment_id === estId;
+            }
 
-            // 2. Coincidencia por correo directo de la empresa
+            // 2. Coincidencia por correo directo de la empresa (si establishment_id no estuviera aún populado)
             if (estEmail && pEmail === estEmail) return true;
 
-            // 3. Coincidencia por dominio corporativo (ej: @avalcar.cr)
-            if (estDomain && pEmail.endsWith(`@${estDomain}`)) return true;
-
-            // 4. Coincidencia por código de empresa
-            if (estCode && pEmail.includes(estCode)) return true;
+            // 3. Dominio corporativo exclusivo (solo si NO es un correo público como gmail/hotmail)
+            if (estDomain && !isGenericDomain && pEmail.endsWith(`@${estDomain}`)) return true;
 
             return false;
           });

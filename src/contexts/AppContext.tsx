@@ -31,6 +31,7 @@ export type User = {
   email: string;
   role: Role;
   initials: string;
+  establishment_id?: string | null;
 };
 
 type AppState = {
@@ -84,17 +85,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const resolveActiveEstablishment = (
     estData: EstablishmentRecord[],
     currentUserEmail?: string,
-    currentUserRole?: Role
+    currentUserRole?: Role,
+    overrideEstId?: string | null
   ): EstablishmentRecord | null => {
     if (!estData || estData.length === 0) return null;
 
     const email = (currentUserEmail || user.email || "").toLowerCase().trim();
     const role = currentUserRole || user.role;
     const isSuper = role === "super_admin" || email === "alex@mail.com";
+    const estId = overrideEstId !== undefined ? overrideEstId : user.establishment_id;
 
-    // 1. Si es inquilino (no super_admin), buscar estrictamente su empresa
-    if (!isSuper && email) {
-      // Prioridad 1: metadata explícita de establecimiento amarrada al usuario
+    // 1. Si es inquilino (no super_admin), anclarlo ESTRICTAMENTE a su empresa
+    if (!isSuper) {
+      // Prioridad 1: establishment_id explícito en la base de datos (profiles.establishment_id)
+      if (estId) {
+        const directMatch = estData.find((e) => e.id === estId);
+        if (directMatch) {
+          if (typeof window !== "undefined") {
+            localStorage.setItem("facturaos_active_est_id", directMatch.id);
+          }
+          return directMatch;
+        }
+      }
+
+      // Prioridad 2: metadata explícita de autenticación
       const metaEstId = (authUser as any)?.user_metadata?.establishment_id;
       if (metaEstId) {
         const directMatch = estData.find((e) => e.id === metaEstId);
@@ -106,24 +120,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      // Prioridad 2: coincidencia por email o código
-      const emailLocal = email.split("@")[0].replace(/[^a-z0-9]/g, "");
-      const matched =
-        estData.find((e) => e.email?.toLowerCase().trim() === email) ||
-        estData.find((e) => {
-          const codeClean = (e.code || "").replace(/_/g, "").toLowerCase();
-          return codeClean.includes(emailLocal) || emailLocal.includes(codeClean);
-        }) ||
-        estData.find((e) => {
-          const nameClean = (e.name || "").replace(/[^a-z0-9]/gi, "").toLowerCase();
-          return nameClean.includes(emailLocal) || emailLocal.includes(nameClean);
-        });
-
-      if (matched) {
-        if (typeof window !== "undefined") {
-          localStorage.setItem("facturaos_active_est_id", matched.id);
+      // Prioridad 3: coincidencia exacta por correo de la empresa
+      if (email) {
+        const matched = estData.find((e) => e.email?.toLowerCase().trim() === email);
+        if (matched) {
+          if (typeof window !== "undefined") {
+            localStorage.setItem("facturaos_active_est_id", matched.id);
+          }
+          return matched;
         }
-        return matched;
       }
     }
 
@@ -143,7 +148,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return found || null;
   };
 
-  const loadEstablishments = async (overrideEmail?: string, overrideRole?: Role) => {
+  const loadEstablishments = async (overrideEmail?: string, overrideRole?: Role, overrideEstId?: string | null) => {
     try {
       const { data: estData, error } = await supabase
         .from("establishments")
@@ -153,7 +158,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (error) throw error;
       if (estData && estData.length > 0) {
         setEstablishments(estData);
-        const resolved = resolveActiveEstablishment(estData, overrideEmail, overrideRole);
+        const resolved = resolveActiveEstablishment(estData, overrideEmail, overrideRole, overrideEstId);
         if (resolved) {
           setActiveEstablishmentState(resolved);
         }
@@ -164,6 +169,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const setActiveEstablishment = (est: EstablishmentRecord) => {
+    // Protección multi-tenant: si NO es super_admin, no se permite conmutar a otra empresa
+    if (!isSuperAdmin && user.establishment_id && est.id !== user.establishment_id) {
+      console.warn("Acceso denegado: el usuario no tiene permisos para conmutar de empresa");
+      return;
+    }
     setActiveEstablishmentState(est);
     if (typeof window !== "undefined") {
       localStorage.setItem("facturaos_active_est_id", est.id);
@@ -185,6 +195,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const userEmail = profile?.email || sbUser.email || "";
       const role = ((profile?.role || sbUser.user_metadata?.role) as Role) || "admin";
       const name = profile?.full_name || sbUser.user_metadata?.full_name || userEmail.split("@")[0] || "Usuario";
+      const establishment_id = profile?.establishment_id || (sbUser as any)?.user_metadata?.establishment_id || null;
 
       if (!profile && !error) {
         await supabase.from("profiles").upsert({
@@ -192,6 +203,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           email: userEmail,
           full_name: name,
           role,
+          establishment_id,
         });
       }
 
@@ -201,10 +213,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         email: userEmail,
         role,
         initials: getInitials(name),
+        establishment_id,
       });
 
       // Refrescar y alinear establecimiento activo con la identidad del usuario
-      await loadEstablishments(userEmail, role);
+      await loadEstablishments(userEmail, role, establishment_id);
     } catch (err) {
       console.error("Error cargando perfil de usuario:", err);
       const name = sbUser.email?.split("@")[0] || "Usuario";
@@ -215,8 +228,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         email: fallbackEmail,
         role: "admin",
         initials: getInitials(name),
+        establishment_id: null,
       });
-      await loadEstablishments(fallbackEmail, "admin");
+      await loadEstablishments(fallbackEmail, "admin", null);
     }
   };
 
@@ -234,12 +248,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (profile) {
           const name = profile.full_name || "Usuario";
           const role = (profile.role as Role) || "admin";
+          const establishment_id = profile.establishment_id || null;
           setUser({
             id: profile.id,
             name,
             email: profile.email || "",
             role,
             initials: getInitials(name),
+            establishment_id,
           });
           return;
         }

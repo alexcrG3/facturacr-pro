@@ -7,6 +7,29 @@
 
 ---
 
+### [2026-10-21 23:20] - Corrección Crítica: Enrutamiento Forzoso por profiles.establishment_id al Login y Blindaje contra Dominios Públicos (@gmail.com) en Filtros Multi-Tenant
+* **Módulos Afectados:**
+  - `src/contexts/AppContext.tsx`
+  - `src/routes/app.settings.tsx`
+* **Incidencias Reportadas por el Usuario:**
+  1. Al iniciar sesión el nuevo usuario **Grand Alex (`alxndrgm@gmail.com`)**, el sistema lo colocó erróneamente en el negocio **BarberApp** en lugar de su negocio asignado **LUXX CAR WASH**.
+  2. Estando en BarberApp, Grand Alex podía ver a los 6 usuarios de los demás negocios (Nexus Clinic, NexusSport, GassExpress, Oswaldo, Dr.VET, Grand Alex).
+* **Causa Raíz:**
+  1. **Enrutamiento inicial (`AppContext.tsx`):** Al autenticar al usuario, `loadUserProfile` leía el perfil de Supabase pero no almacenaba `profile.establishment_id` en el estado de usuario ni se lo pasaba a `resolveActiveEstablishment`. Al no encontrar match directo en `user_metadata`, el sistema recurría al valor guardado en `localStorage` (donde estaba guardado BarberApp de pruebas previas).
+  2. **Fuga por Dominio Genérico (`app.settings.tsx`):** En `loadTeamProfiles`, existía la regla `if (estDomain && pEmail.endsWith('@' + estDomain)) return true`. Debido a que BarberApp tiene el correo `barberapp@gmail.com`, `estDomain` se evaluaba como `"gmail.com"`. Como consecuencia, **todos los usuarios con correo `@gmail.com` coincidían con la regla y eran listados en la empresa**, provocando la fuga visual de inquilinos.
+* **Cómo se resolvió:**
+  1. **Anclaje Obligatorio por ID en Login (`AppContext.tsx`):**
+     - Se añadió `establishment_id` a la interfaz `User` y a los métodos `loadUserProfile` y `refreshProfile`.
+     - `resolveActiveEstablishment` ahora evalúa como **Prioridad 1 Absoluta** el `profiles.establishment_id` guardado en la base de datos. Si el usuario es un inquilino, el sistema lo amarra forzosamente a su empresa sin importar lo que haya en `localStorage` ni en la URL.
+     - `setActiveEstablishment` bloquea de inmediato cualquier intento de un inquilino de conmutar a otra empresa ajena.
+  2. **Lista Negra de Dominios Públicos y Filtro por ID Estricto (`app.settings.tsx`):**
+     - Se implementó la regla primaria `if (p.establishment_id) return p.establishment_id === estId`.
+     - Se creó una lista negra de dominios genéricos (`gmail.com`, `hotmail.com`, `outlook.com`, `yahoo.com`, `icloud.com`) para evitar que correos públicos sean tratados como dominios corporativos.
+     - Cada empresa (LUXX CAR WASH, BarberApp, Nexus Clinic, etc.) ahora muestra estricta y únicamente a sus propios usuarios asignados.
+* **Prevención:** Jamás utilizar coincidencia de dominio sobre proveedores de correo electrónico gratuitos/públicos para agrupar inquilinos; la clave foránea `establishment_id` en base de datos debe ser la única fuente de verdad para la pertenencia multi-tenant.
+
+---
+
 ### [2026-10-21 23:05] - Aislamiento Multi-Tenant Estricto en Gestión de Usuarios (/app/settings), Vinculación de Base de Datos y Privacidad del SuperAdmin
 * **Módulos Afectados:**
   - `src/routes/app.settings.tsx`
