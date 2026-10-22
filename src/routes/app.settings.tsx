@@ -269,6 +269,7 @@ function SettingsPage() {
 
   // Estado Usuarios / Equipo (CRUD conectado a Supabase)
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+  const [hideSuperAdminInTeam, setHideSuperAdminInTeam] = useState(false);
   const [userModalOpen, setUserModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<TeamMember | null>(null);
   const [userForm, setUserForm] = useState({
@@ -328,10 +329,16 @@ function SettingsPage() {
 
           filtered = data.filter((p: any) => {
             const pEmail = (p.email || "").toLowerCase().trim();
-            // Siempre incluir al Propietario / SuperAdmin del sistema
-            if (pEmail === (user.email || "").toLowerCase().trim() || pEmail === "alex@mail.com") {
-              return true;
+            const isSuper = p.role === "super_admin" || pEmail === "alex@mail.com";
+
+            // Si es SuperAdmin de la plataforma:
+            // - Para clientes e inquilinos normales: 100% INVISIBLE (nunca ven al SuperAdmin).
+            // - Para el SuperAdmin: visible como cuenta de soporte, con opción de ocultarlo.
+            if (isSuper) {
+              if (!isSuperAdmin) return false;
+              return !hideSuperAdminInTeam;
             }
+
             // Incluir si coincide con el correo directo de la empresa activa
             if (estEmail && pEmail === estEmail) return true;
             // Incluir si coincide con el código de la empresa
@@ -361,7 +368,7 @@ function SettingsPage() {
 
   useEffect(() => {
     loadTeamProfiles();
-  }, [activeEstablishment, isSuperAdmin]);
+  }, [activeEstablishment, isSuperAdmin, hideSuperAdminInTeam]);
 
   // Cargar configuración guardada de localStorage al montar
   useEffect(() => {
@@ -2263,71 +2270,110 @@ print(response.json())`}
                 <div>
                   <h2 className="text-lg font-semibold">Equipo y Permisos de Acceso</h2>
                   <p className="text-sm text-muted-foreground">
-                    {teamMembers.length} usuarios con acceso al sistema de facturación electrónica.
+                    {teamMembers.length} {teamMembers.length === 1 ? "usuario" : "usuarios"} con acceso al sistema de facturación electrónica.
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={openNewUserModal}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-2 text-xs font-medium text-primary-foreground shadow-sm hover:bg-primary/90 transition-colors shrink-0"
-                >
-                  <UserPlus className="h-4 w-4" /> Invitar Usuario
-                </button>
+                <div className="flex items-center gap-2">
+                  {isSuperAdmin && (
+                    <button
+                      type="button"
+                      onClick={() => setHideSuperAdminInTeam(!hideSuperAdminInTeam)}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-2 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shadow-sm shrink-0"
+                      title={hideSuperAdminInTeam ? "Mostrar cuenta de soporte en la lista" : "Ocultar cuenta SuperAdmin de esta vista"}
+                    >
+                      {hideSuperAdminInTeam ? (
+                        <>
+                          <Eye className="h-3.5 w-3.5 text-primary" /> Mostrar SuperAdmin
+                        </>
+                      ) : (
+                        <>
+                          <EyeOff className="h-3.5 w-3.5 text-muted-foreground" /> Ocultar SuperAdmin
+                        </>
+                      )}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={openNewUserModal}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-2 text-xs font-medium text-primary-foreground shadow-sm hover:bg-primary/90 transition-colors shrink-0"
+                  >
+                    <UserPlus className="h-4 w-4" /> Invitar Usuario
+                  </button>
+                </div>
               </div>
 
               <div className="rounded-xl border border-border bg-card divide-y divide-border overflow-hidden">
-                {teamMembers.map((t) => (
-                  <div key={t.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 hover:bg-muted/20 transition-colors">
-                    <div className="flex items-center gap-3.5">
-                      <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full gradient-primary text-xs font-bold text-primary-foreground shadow-sm">
-                        {t.name
-                          .split(" ")
-                          .map((n) => n[0])
-                          .slice(0, 2)
-                          .join("")
-                          .toUpperCase()}
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <h3 className="text-sm font-semibold text-foreground">{t.name}</h3>
-                          <span
-                            className={`rounded-md px-2 py-0.5 text-[10px] font-medium ${
-                              t.role.includes("Administrador")
-                                ? "bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20"
-                                : t.role === "Contador"
-                                ? "bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20"
-                                : t.role === "Cajero"
-                                ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20"
-                                : "bg-muted text-muted-foreground"
-                            }`}
-                          >
-                            {t.role}
-                          </span>
-                        </div>
-                        <div className="text-xs text-muted-foreground">{t.email}</div>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2 self-end sm:self-center">
-                      <button
-                        type="button"
-                        onClick={() => openEditUserModal(t)}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted transition-colors"
-                      >
-                        <Edit2 className="h-3.5 w-3.5 text-primary" /> Editar Rol
-                      </button>
-                      {t.email !== "alex@mail.com" && (
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteUser(t.id, t.name, t.email)}
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-1.5 text-xs font-medium text-destructive hover:bg-destructive/20 transition-colors"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" /> Eliminar
-                        </button>
-                      )}
+                {teamMembers.length === 0 ? (
+                  <div className="p-10 text-center space-y-3">
+                    <UsersIcon className="h-10 w-10 mx-auto text-muted-foreground/30" />
+                    <div>
+                      <h4 className="text-sm font-semibold text-foreground">No hay usuarios de este negocio registrados</h4>
+                      <p className="text-xs text-muted-foreground mt-1 max-w-sm mx-auto">
+                        Los clientes e inquilinos tienen su propio acceso privado. Haz clic en <strong>"Invitar Usuario"</strong> para asignar al personal de {activeEstablishment?.app_name || activeEstablishment?.name || "este negocio"}.
+                      </p>
                     </div>
                   </div>
-                ))}
+                ) : (
+                  teamMembers.map((t) => (
+                    <div key={t.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 hover:bg-muted/20 transition-colors">
+                      <div className="flex items-center gap-3.5">
+                        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full gradient-primary text-xs font-bold text-primary-foreground shadow-sm">
+                          {t.name
+                            .split(" ")
+                            .map((n) => n[0])
+                            .slice(0, 2)
+                            .join("")
+                            .toUpperCase()}
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h3 className="text-sm font-semibold text-foreground">{t.name}</h3>
+                            <span
+                              className={`rounded-md px-2 py-0.5 text-[10px] font-medium ${
+                                t.role.includes("Propietario") || t.role.includes("SuperAdmin")
+                                  ? "bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20"
+                                  : t.role.includes("Administrador")
+                                  ? "bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20"
+                                  : t.role === "Contador"
+                                  ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
+                                  : t.role === "Cajero"
+                                  ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20"
+                                  : "bg-muted text-muted-foreground"
+                              }`}
+                            >
+                              {t.role}
+                            </span>
+                            {t.email === "alex@mail.com" && (
+                              <span className="rounded-md bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 text-[9px] font-medium text-amber-600 dark:text-amber-400">
+                                Visible solo para ti (SuperAdmin)
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-xs text-muted-foreground">{t.email}</div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 self-end sm:self-center">
+                        <button
+                          type="button"
+                          onClick={() => openEditUserModal(t)}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted transition-colors"
+                        >
+                          <Edit2 className="h-3.5 w-3.5 text-primary" /> Editar Rol
+                        </button>
+                        {t.email !== "alex@mail.com" && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteUser(t.id, t.name, t.email)}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-1.5 text-xs font-medium text-destructive hover:bg-destructive/20 transition-colors"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" /> Eliminar
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
 
               {/* Modal de Usuario (Invitar / Editar) */}
