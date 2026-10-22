@@ -321,8 +321,9 @@ function SettingsPage() {
         .order("created_at", { ascending: true });
       if (data && !error && data.length > 0) {
         let filtered = data;
-        // Filtrar estrictamente por la empresa activa para garantizar aislamiento multi-tenant
+        // Filtrar estrictamente por la empresa activa
         if (activeEstablishment) {
+          const estId = activeEstablishment.id;
           const estEmail = (activeEstablishment.email || "").toLowerCase().trim();
           const estCode = (activeEstablishment.code || "").toLowerCase().trim();
           const estDomain = estEmail.includes("@") ? estEmail.split("@")[1] : "";
@@ -339,12 +340,17 @@ function SettingsPage() {
               return !hideSuperAdminInTeam;
             }
 
-            // Incluir si coincide con el correo directo de la empresa activa
+            // 1. Vinculación directa en base de datos por establishment_id
+            if (p.establishment_id && p.establishment_id === estId) return true;
+
+            // 2. Coincidencia por correo directo de la empresa
             if (estEmail && pEmail === estEmail) return true;
-            // Incluir si coincide con el código de la empresa
-            if (estCode && pEmail.includes(estCode)) return true;
-            // Incluir si el dominio del correo coincide con el de la empresa (ej: @avalcar.cr)
+
+            // 3. Coincidencia por dominio corporativo (ej: @avalcar.cr)
             if (estDomain && pEmail.endsWith(`@${estDomain}`)) return true;
+
+            // 4. Coincidencia por código de empresa
+            if (estCode && pEmail.includes(estCode)) return true;
 
             return false;
           });
@@ -534,6 +540,7 @@ function SettingsPage() {
         .update({
           full_name: userForm.name.trim(),
           role: targetRole,
+          establishment_id: activeEstablishment?.id || null,
         })
         .eq("id", editingUser.id);
 
@@ -546,7 +553,57 @@ function SettingsPage() {
       await loadTeamProfiles();
       await refreshProfile();
     } else {
-      toast.info("Para agregar un nuevo usuario, el usuario debe registrarse con su correo en la pantalla de acceso. Luego podrás asignarle su rol aquí.");
+      const targetEmail = userForm.email.trim().toLowerCase();
+      if (!targetEmail) {
+        toast.error("El correo electrónico es obligatorio");
+        return;
+      }
+
+      // Buscar si el usuario ya existe en perfiles (registrado previamente)
+      const { data: existingProf } = await supabase
+        .from("profiles")
+        .select("id, email, full_name")
+        .ilike("email", targetEmail)
+        .maybeSingle();
+
+      if (existingProf) {
+        // Asignarlo inmediatamente a esta empresa y actualizarle rol
+        const { error: updateErr } = await supabase
+          .from("profiles")
+          .update({
+            full_name: userForm.name.trim(),
+            role: targetRole,
+            establishment_id: activeEstablishment?.id || null,
+          })
+          .eq("id", existingProf.id);
+
+        if (updateErr) {
+          toast.error("Error al vincular usuario a esta empresa: " + updateErr.message);
+          return;
+        }
+
+        toast.success(`¡Usuario "${userForm.name.trim()}" asignado a ${activeEstablishment?.app_name || activeEstablishment?.name || "la empresa"} como ${userForm.role}!`);
+        await loadTeamProfiles();
+      } else {
+        // Intentar registrar el perfil en la base de datos vinculado a esta empresa
+        const { error: insertErr } = await supabase
+          .from("profiles")
+          .insert({
+            email: targetEmail,
+            full_name: userForm.name.trim(),
+            role: targetRole,
+            establishment_id: activeEstablishment?.id || null,
+          });
+
+        if (insertErr) {
+          toast.info(
+            `El usuario ${targetEmail} debe iniciar sesión al menos una vez en FacturaOS. Al ingresar quedará asignado a ${activeEstablishment?.name || "este negocio"}.`
+          );
+        } else {
+          toast.success(`¡Usuario "${userForm.name.trim()}" creado y asignado a ${activeEstablishment?.app_name || activeEstablishment?.name || "la empresa"}!`);
+          await loadTeamProfiles();
+        }
+      }
     }
 
     setUserModalOpen(false);
@@ -557,14 +614,17 @@ function SettingsPage() {
       toast.error("La cuenta principal del propietario no puede ser eliminada.");
       return;
     }
-    if (confirm(`¿Está seguro de eliminar al usuario "${name}"?`)) {
-      const { error } = await supabase.from("profiles").delete().eq("id", id);
+    if (confirm(`¿Está seguro de remover al usuario "${name}" de esta empresa?`)) {
+      const { error } = await supabase
+        .from("profiles")
+        .update({ establishment_id: null })
+        .eq("id", id);
       if (error) {
-        toast.error("Error al eliminar perfil de usuario");
+        toast.error("Error al desvincular usuario de la empresa");
         return;
       }
       setTeamMembers((prev) => prev.filter((u) => u.id !== id));
-      toast.success(`Usuario "${name}" eliminado`);
+      toast.success(`Usuario "${name}" removido de esta empresa`);
     }
   };
 
