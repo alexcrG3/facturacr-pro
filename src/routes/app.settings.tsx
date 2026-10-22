@@ -320,17 +320,26 @@ function SettingsPage() {
         .order("created_at", { ascending: true });
       if (data && !error && data.length > 0) {
         let filtered = data;
-        // Si es inquilino, solo ver usuarios de su empresa o su propio usuario
-        if (!isSuperAdmin && activeEstablishment) {
+        // Filtrar estrictamente por la empresa activa para garantizar aislamiento multi-tenant
+        if (activeEstablishment) {
           const estEmail = (activeEstablishment.email || "").toLowerCase().trim();
           const estCode = (activeEstablishment.code || "").toLowerCase().trim();
+          const estDomain = estEmail.includes("@") ? estEmail.split("@")[1] : "";
+
           filtered = data.filter((p: any) => {
             const pEmail = (p.email || "").toLowerCase().trim();
-            return (
-              pEmail === (user.email || "").toLowerCase().trim() ||
-              (estEmail && pEmail === estEmail) ||
-              (estCode && pEmail.includes(estCode))
-            );
+            // Siempre incluir al Propietario / SuperAdmin del sistema
+            if (pEmail === (user.email || "").toLowerCase().trim() || pEmail === "alex@mail.com") {
+              return true;
+            }
+            // Incluir si coincide con el correo directo de la empresa activa
+            if (estEmail && pEmail === estEmail) return true;
+            // Incluir si coincide con el código de la empresa
+            if (estCode && pEmail.includes(estCode)) return true;
+            // Incluir si el dominio del correo coincide con el de la empresa (ej: @avalcar.cr)
+            if (estDomain && pEmail.endsWith(`@${estDomain}`)) return true;
+
+            return false;
           });
         }
         setTeamMembers(
