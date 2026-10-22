@@ -7,6 +7,67 @@
 
 ---
 
+### [2026-10-21 23:05] - Aislamiento Multi-Tenant Estricto en Gestión de Usuarios (/app/settings), Vinculación de Base de Datos y Privacidad del SuperAdmin
+* **Módulos Afectados:**
+  - `src/routes/app.settings.tsx`
+  - Supabase PostgreSQL (`public.profiles.establishment_id`)
+  - `src/contexts/AppContext.tsx`
+* **Incidencias Reportadas por el Usuario:**
+  1. Al navegar en la empresa **LUXX CAR WASH** logueado como SuperAdmin, la pestaña de *Usuarios y roles* mostraba a todos los usuarios de las demás empresas (Nexus Clinic, GassExpress, Dr.VET, BarberApp).
+  2. Al intentar invitar/asignar a un usuario ya registrado en Supabase Auth (`alxndrgm@gmail.com`, "Grand Alex"), el modal mostraba un aviso informativo estático (`toast.info`) y no lo vinculaba a la empresa.
+  3. Requerimiento de privacidad: la cuenta del SuperAdmin (`alex@mail.com`) debe permanecer **100% invisible para los clientes/inquilinos**, o permitir al SuperAdmin ocultarla/mostrarla a discreción.
+* **Causa Raíz:**
+  1. La condición en `loadTeamProfiles` (`if (!isSuperAdmin && activeEstablishment)`) eximía al SuperAdmin del filtro, provocando que viera perfiles ajenos dentro de la vista propia del inquilino.
+  2. En la base de datos Supabase, la tabla `profiles` no contaba con una columna relacional `establishment_id`, impidiendo la asociación formal de usuarios con empresas específicas.
+  3. `handleSaveUser` en modo nuevo usuario no realizaba la inserción ni la actualización en `profiles`.
+* **Cómo se resolvió:**
+  1. **Migración en Supabase PostgreSQL:** Se añadió la columna `establishment_id UUID REFERENCES establishments(id) ON DELETE SET NULL` y su índice correspondiente (`idx_profiles_establishment_id`).
+  2. **Vinculación Oficial de Usuarios en Base de Datos:** Se enlazaron todos los usuarios del sistema a sus respectivos negocios y se asoció formalmente a `alxndrgm@gmail.com` ("Grand Alex") como **Administrador** de LUXX CAR WASH.
+  3. **Aislamiento Estricto por Inquilino:** `loadTeamProfiles` ahora filtra estrictamente por `p.establishment_id === activeEstablishment.id` y reglas de dominio corporativo.
+  4. **Privacidad Total del SuperAdmin:**
+     - Para los clientes e inquilinos que inicien sesión, la cuenta maestra de SuperAdmin es **100% invisible**.
+     - Para el SuperAdmin, se integró el botón interactivo **`Ocultar SuperAdmin` / `Mostrar SuperAdmin`** con badge `Visible solo para ti (SuperAdmin)`, permitiendo simular con total fidelidad la pantalla limpia que ve el cliente.
+     - Se añadió un estado vacío amigable cuando el negocio aún no tiene usuarios registrados.
+  5. **Invitación y Asignación Operativa:** `handleSaveUser` ahora busca el correo en `profiles` y lo asigna de inmediato a la empresa activa con el rol seleccionado.
+* **Prevención:** Ningún inquilino debe acceder a metadatos de otros negocios y las tablas de perfiles siempre deben guardar clave foránea al establecimiento activo.
+
+---
+
+### [2026-10-21 22:35] - Despliegue en Producción Vercel, Adaptador Serverless para TanStack Start y Conexión de Dominio `go.facturaos.online`
+* **Módulos Afectados:**
+  - `api/index.ts`
+  - `vercel.json`
+  - `vite.config.ts`
+  - Configuración DNS en Namecheap
+* **Incidencias Reportadas por el Usuario:**
+  1. El subdominio `go.facturaos.online` devolvía error `404 NOT_FOUND` de Vercel a pesar de tener configuración DNS válida.
+  2. En un despliegue intermedio, la pestaña del navegador quedaba en carga indefinida (loading spinner) sin responder.
+* **Causa Raíz:**
+  1. TanStack Start genera SSR dinámico en `dist/server/server.js` y recursos estáticos en `dist/client`. Vercel asumió por defecto un sitio estático Vite y buscaba `dist/index.html` (inexistente), respondiendo 404.
+  2. El entorno Node Serverless de Vercel esperaba el cierre explícito de la respuesta (`res.end()`). Al devolver un objeto Web `Response` nativo sin invocar `res.end()`, la conexión quedaba abierta hasta que sobrepasaba el tiempo de espera (504 Timeout).
+* **Cómo se resolvió:**
+  1. **Configuración DNS en Namecheap:** Vinculación exitosa del registro CNAME `go` hacia el host de Vercel y validación TXT.
+  2. **Adaptador Serverless Bidireccional (`api/index.ts`):** Se implementó un conector universal que transforma las peticiones `http.IncomingMessage` de Node en Web `Request`, ejecuta el motor `server.fetch(request)` de TanStack Start y traduce el resultado llamando a `res.setHeader()` y `res.end()` de inmediato.
+  3. **Configuración Vercel (`vercel.json`):** Se definió `outputDirectory: "dist/client"` para la entrega instantánea de estáticos y `rewrites` hacia `/api/index` para SSR y endpoints externos `/api/v1/*`.
+  4. **FacturaOS en Vivo:** La plataforma quedó 100% activa en producción en `https://go.facturaos.online`.
+* **Prevención:** Los meta-frameworks SSR con entrada fetch (como TanStack Start o Cloudflare Workers) requieren un puente de compatibilidad con `res.end()` al desplegarse en entornos tradicionales de Node Serverless en Vercel.
+
+---
+
+### [2026-10-21 21:05] - Adaptación Normativa TRIBU-CR 2026, CRUD Completo de Empresas en Centro de Mando y Manual Maestro
+* **Módulos Afectados:**
+  - `src/routes/admin.tsx`
+  - `src/routes/app.settings.tsx`
+  - `MANUAL_DEFINITIVO_NUEVOS_CLIENTES_Y_HACIENDA.md`
+* **Acciones Realizadas:**
+  1. **Ampliación de PIN para TRIBU-CR:** Se aumentó el límite `maxLength` de 4 a 32 caracteres en los formularios de ATV para dar soporte al nuevo estándar de PIN de 14 caracteres de la plataforma TRIBU-CR (OVi) de Hacienda.
+  2. **CRUD Completo de Empresas en `/admin`:** Se añadieron modales interactivos para editar datos fiscales, activar/desactivar estado, visualizar y regenerar API keys, y eliminar inquilinos con confirmación de seguridad.
+  3. **Desacoplamiento de Marcas Satélites:** Se reemplazaron textos quemados ("NexusClinic") por referencias dinámicas ("Conexión API & Software Externo") adaptables a cualquier cliente (taller, veterinaria, gasera, etc.).
+  4. **Manual Maestro de Integración y Hacienda:** Se redactó `MANUAL_DEFINITIVO_NUEVOS_CLIENTES_Y_HACIENDA.md` documentando paso a paso la obtención de llaves criptográficas (.p12) y credenciales en ATV/TRIBU-CR y la conexión vía API REST.
+* **Prevención:** Mantener la plataforma alineada con las directrices tributarias vigentes y proveer autonomía total al SuperAdmin para administrar inquilinos sin requerir edición manual de código.
+
+---
+
 ### [2026-09-17 18:13] - Despliegue y Verificación de la Tarjeta Oficial FacturaOS en Todo el Ecosistema (AthletixOS, BarberApp, GasExpress, AvalCar, PawsPatients)
 * **Módulos Afectados:**
   - `Athletix OS (facturaos.ts, FacturaOSConfigCard.tsx, facturacion.tsx)`
