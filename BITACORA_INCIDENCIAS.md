@@ -7,6 +7,36 @@
 
 ---
 
+### [2026-10-26 22:50] - Sistema Multi-Caja Dinámico, Edición de Terminales y Conmutación Automática de Actividad Económica en Facturación
+* **Módulos Afectados:**
+  - `src/routes/app.cajas.tsx`
+  - `src/routes/app.invoices.new.tsx`
+  - `GUIA_FACTURACION_LUXX_AVALCAR.md`
+  - `ROADMAP_MEJORAS_FUTURAS_HACIENDA.md`
+* **Incidencias y Necesidades Reportadas:**
+  1. No existía forma visual para editar el nombre o la sucursal de una terminal de venta (caja) una vez creada.
+  2. Al emitir una factura (`/app/invoices/new`), no se podía seleccionar entre las diferentes cajas activas asignadas a la sucursal, lo que limitaba negocios con múltiples actividades (ej. Lavado vs. Venta de autos en AvalCar / Luxx).
+  3. Cajas creadas recientemente a veces no se reflejaban de inmediato en la pantalla de facturación debido a lecturas de memoria/caché local desfasadas respecto a Supabase.
+* **Causa Raíz:**
+  1. El listado de cajas carecía de un modal o diálogo para mutar los registros existentes en Supabase (`cash_registers`).
+  2. El formulario de nueva factura tomaba automáticamente la primera caja o un valor estático por defecto sin exponer selector interactivo ni sincronizar dinámicamente la actividad económica vinculada a esa caja.
+  3. Las pantallas dependían de estados cargados inicialmente en lugar de verificar directamente contra la tabla `cash_registers` de Supabase al conmutar sucursal o establecimiento.
+* **Cómo se resolvió:**
+  1. **Modal de Edición de Cajas (`app.cajas.tsx`):**
+     - Se añadió un modal interactivo con validación de nombre y selección de sucursal.
+     - Operación de actualización directa en Supabase con refresco inmediato de lista y notificación toast.
+  2. **Selector de Caja y Auto-Switch de Actividad (`app.invoices.new.tsx`):**
+     - Se integró un selector de caja visible en la cabecera del formulario de facturación.
+     - Al cambiar de caja, el formulario actualiza automáticamente la actividad económica y sucursal correspondiente según los parámetros registrados en Hacienda.
+  3. **Consulta Directa y Concurrente a Base de Datos:**
+     - Se reforzó la carga de cajas para consultar directamente la base de datos Supabase tanto en la gestión de cajas como en la emisión de comprobantes.
+  4. **Documentación Estratégica y Roadmap:**
+     - Se redactó la `GUIA_FACTURACION_LUXX_AVALCAR.md` con los lineamientos contables y de facturación segregada para Luxx Car Wash y AvalCar.
+     - Se elaboró `ROADMAP_MEJORAS_FUTURAS_HACIENDA.md` con base en estándares de resiliencia y dojo-coding para comprobantes electrónicos.
+* **Prevención:** Mantener la relación terminal-sucursal-actividad como un enlace estricto en frontend y backend, garantizando que el usuario siempre facture bajo la actividad económica correcta asociada a la caja física seleccionada.
+
+---
+
 ### [2026-10-21 23:20] - Corrección Crítica: Enrutamiento Forzoso por profiles.establishment_id al Login y Blindaje contra Dominios Públicos (@gmail.com) en Filtros Multi-Tenant
 * **Módulos Afectados:**
   - `src/contexts/AppContext.tsx`
