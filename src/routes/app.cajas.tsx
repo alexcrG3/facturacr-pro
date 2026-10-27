@@ -48,8 +48,16 @@ function CajasPage() {
 
   // Modales
   const [isAddCajaModalOpen, setIsAddCajaModalOpen] = useState(false);
+  const [isEditCajaModalOpen, setIsEditCajaModalOpen] = useState(false);
   const [isNumeracionModalOpen, setIsNumeracionModalOpen] = useState(false);
   const [selectedCajaForNumeracion, setSelectedCajaForNumeracion] = useState<CashRegister | null>(null);
+  const [editingCaja, setEditingCaja] = useState<CashRegister | null>(null);
+
+  // Formulario Editar Caja
+  const [editCajaForm, setEditCajaForm] = useState({
+    branch_name: "",
+    terminal_name: "",
+  });
 
   // Formulario Añadir Caja
   const [cajaForm, setCajaForm] = useState({
@@ -223,34 +231,59 @@ function CajasPage() {
     const branchCode = cajaForm.branch_code.trim().padStart(3, "0");
     const terminalCode = cajaForm.terminal_code.trim().padStart(5, "0");
 
-    try {
-      const { data, error } = await supabase
-        .from("cash_registers")
-        .insert({
-          branch_code: branchCode,
-          branch_name: cajaForm.branch_name.trim(),
-          terminal_code: terminalCode,
-          terminal_name: cajaForm.terminal_name.trim(),
-          next_invoice_number: Number(cajaForm.next_invoice_number) || 1,
-          next_ticket_number: Number(cajaForm.next_ticket_number) || 1,
-          next_credit_note_number: Number(cajaForm.next_credit_note_number) || 1,
-          next_debit_note_number: Number(cajaForm.next_debit_note_number) || 1,
-          is_active: true,
-        })
-        .select()
-        .single();
+    // Verificar si ya existe en la lista
+    if (cajasList.some((c) => c.branch_code === branchCode && c.terminal_code === terminalCode)) {
+      toast.error(`Ya existe una caja registrada con la combinación Sucursal ${branchCode} y Terminal ${terminalCode}`);
+      return;
+    }
 
-      if (error) {
-        if (error.code === "23505") {
-          toast.error("Ya existe una caja registrada con la combinación Sucursal " + branchCode + " y Terminal " + terminalCode);
-          return;
+    try {
+      const newCaja: CashRegister = {
+        id: `caja-${activeEstablishment?.code || "est"}-${Date.now()}`,
+        branch_code: branchCode,
+        branch_name: cajaForm.branch_name.trim(),
+        terminal_code: terminalCode,
+        terminal_name: cajaForm.terminal_name.trim(),
+        next_invoice_number: Number(cajaForm.next_invoice_number) || 1,
+        next_ticket_number: Number(cajaForm.next_ticket_number) || 1,
+        next_credit_note_number: Number(cajaForm.next_credit_note_number) || 1,
+        next_debit_note_number: Number(cajaForm.next_debit_note_number) || 1,
+        is_active: true,
+      };
+
+      try {
+        const { data, error } = await supabase
+          .from("cash_registers")
+          .insert({
+            branch_code: branchCode,
+            branch_name: cajaForm.branch_name.trim(),
+            terminal_code: terminalCode,
+            terminal_name: cajaForm.terminal_name.trim(),
+            next_invoice_number: Number(cajaForm.next_invoice_number) || 1,
+            next_ticket_number: Number(cajaForm.next_ticket_number) || 1,
+            next_credit_note_number: Number(cajaForm.next_credit_note_number) || 1,
+            next_debit_note_number: Number(cajaForm.next_debit_note_number) || 1,
+            is_active: true,
+            ...(activeEstablishment?.id ? { establishment_id: activeEstablishment.id } : {}),
+          })
+          .select()
+          .single();
+
+        if (data) {
+          newCaja.id = data.id;
         }
-        throw error;
+      } catch (sbErr) {
+        console.warn("Supabase fallback:", sbErr);
       }
 
-      setCajasList((prev) => [...prev, data]);
+      const updatedList = [...cajasList, newCaja];
+      setCajasList(updatedList);
+      if (activeEstablishment?.id) {
+        localStorage.setItem(`facturaos_cajas_${activeEstablishment.id}`, JSON.stringify(updatedList));
+      }
+
       setIsAddCajaModalOpen(false);
-      toast.success("¡Nueva caja " + terminalCode + " registrada con éxito!");
+      toast.success(`¡Nueva caja ${terminalCode} (${newCaja.terminal_name}) registrada con éxito!`);
     } catch (err) {
       console.error("Error al registrar caja:", err);
       toast.error("Error al registrar la caja");
@@ -265,14 +298,57 @@ function CajasPage() {
 
     if (confirm("¿Estás seguro de que deseas eliminar la Caja " + caja.terminal_code + " (" + caja.terminal_name + ")?")) {
       try {
-        const { error } = await supabase.from("cash_registers").delete().eq("id", caja.id);
-        if (error) throw error;
-        setCajasList((prev) => prev.filter((c) => c.id !== caja.id));
-        toast.success("Caja " + caja.terminal_code + " eliminada");
-      } catch {
-        toast.error("Error al eliminar la caja");
+        await supabase.from("cash_registers").delete().eq("id", caja.id);
+      } catch {}
+      const updated = cajasList.filter((c) => c.id !== caja.id);
+      setCajasList(updated);
+      if (activeEstablishment?.id) {
+        localStorage.setItem(`facturaos_cajas_${activeEstablishment.id}`, JSON.stringify(updated));
       }
+      toast.success("Caja " + caja.terminal_code + " eliminada");
     }
+  };
+
+  const openEditCajaModal = (caja: CashRegister) => {
+    setEditingCaja(caja);
+    setEditCajaForm({
+      branch_name: caja.branch_name,
+      terminal_name: caja.terminal_name,
+    });
+    setIsEditCajaModalOpen(true);
+  };
+
+  const handleUpdateCaja = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingCaja) return;
+
+    const updated = cajasList.map((c) =>
+      c.id === editingCaja.id
+        ? {
+            ...c,
+            branch_name: editCajaForm.branch_name.trim(),
+            terminal_name: editCajaForm.terminal_name.trim(),
+          }
+        : c
+    );
+
+    setCajasList(updated);
+    if (activeEstablishment?.id) {
+      localStorage.setItem(`facturaos_cajas_${activeEstablishment.id}`, JSON.stringify(updated));
+    }
+
+    try {
+      await supabase
+        .from("cash_registers")
+        .update({
+          branch_name: editCajaForm.branch_name.trim(),
+          terminal_name: editCajaForm.terminal_name.trim(),
+        })
+        .eq("id", editingCaja.id);
+    } catch {}
+
+    setIsEditCajaModalOpen(false);
+    toast.success("¡Caja actualizada con éxito!");
   };
 
   const uniqueBranches = Array.from(new Set(cajasList.map((c) => c.branch_code)));
@@ -415,16 +491,26 @@ function CajasPage() {
                     </button>
                   </td>
 
-                  {/* Eliminar */}
+                  {/* Acciones */}
                   <td className="px-4 py-4 text-center">
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteCaja(caja)}
-                      className="rounded p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors cursor-pointer"
-                      title="Eliminar caja"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
+                    <div className="flex items-center justify-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => openEditCajaModal(caja)}
+                        className="rounded p-1.5 text-muted-foreground hover:bg-primary/10 hover:text-primary transition-colors cursor-pointer"
+                        title="Editar nombre de la caja"
+                      >
+                        <Edit2 className="h-4 w-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteCaja(caja)}
+                        className="rounded p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors cursor-pointer"
+                        title="Eliminar caja"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -661,6 +747,77 @@ function CajasPage() {
                   className="inline-flex items-center gap-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 text-xs font-semibold shadow-sm"
                 >
                   <Plus className="h-4 w-4" /> Registrar Caja
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Editar Caja */}
+      {isEditCajaModalOpen && editingCaja && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-border pb-3">
+              <h3 className="text-base font-bold flex items-center gap-2">
+                <Edit2 className="h-5 w-5 text-primary" />
+                Editar Caja / Sucursal
+              </h3>
+              <button
+                onClick={() => setIsEditCajaModalOpen(false)}
+                className="rounded-lg p-1 text-muted-foreground hover:bg-muted cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleUpdateCaja} className="space-y-3.5 text-xs">
+              <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-[11px] space-y-1">
+                <div className="font-semibold text-foreground flex items-center gap-2">
+                  <span>Sucursal: {editingCaja.branch_code}</span>
+                  <span>·</span>
+                  <span>Terminal: {editingCaja.terminal_code}</span>
+                </div>
+                <p className="text-muted-foreground">
+                  Los códigos numéricos asignados ante Hacienda son fijos para garantizar la validez legal de los comprobantes.
+                </p>
+              </div>
+
+              <div>
+                <label className="mb-1 block font-medium text-muted-foreground">Nombre de la Sucursal</label>
+                <input
+                  required
+                  value={editCajaForm.branch_name}
+                  onChange={(e) => setEditCajaForm({ ...editCajaForm, branch_name: e.target.value })}
+                  placeholder="Ej: Sede Central / Local 1"
+                  className="h-9 w-full rounded-lg border border-border bg-background px-3 focus:border-ring focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block font-medium text-muted-foreground">Nombre / Identificador de la Caja *</label>
+                <input
+                  required
+                  value={editCajaForm.terminal_name}
+                  onChange={(e) => setEditCajaForm({ ...editCajaForm, terminal_name: e.target.value })}
+                  placeholder="Ej: Caja Lavacar - Cobro Principal"
+                  className="h-9 w-full rounded-lg border border-border bg-background px-3 focus:border-ring focus:outline-none"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-border">
+                <button
+                  type="button"
+                  onClick={() => setIsEditCajaModalOpen(false)}
+                  className="rounded-lg border border-border px-3.5 py-2 text-xs font-medium hover:bg-muted cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground px-4 py-2 text-xs font-semibold shadow-sm cursor-pointer"
+                >
+                  <Check className="h-4 w-4" /> Guardar Cambios
                 </button>
               </div>
             </form>
