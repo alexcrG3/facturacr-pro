@@ -288,13 +288,14 @@ function NewInvoice() {
   });
 
   const [emisorActivityCode, setEmisorActivityCode] = useState(() => {
-    try {
-      const cfg = JSON.parse(localStorage.getItem("facturacr_hacienda_config") || "{}");
-      return cfg.codigoActividad === "620901" ? "6209.0" : (cfg.codigoActividad || "6209.0");
-    } catch {
-      return "6209.0";
-    }
+    return activeEstablishment?.economic_activity_code || "452001";
   });
+
+  useEffect(() => {
+    if (activeEstablishment?.economic_activity_code) {
+      setEmisorActivityCode(activeEstablishment.economic_activity_code);
+    }
+  }, [activeEstablishment?.economic_activity_code]);
   const [docType, setDocType] = useState(() => {
     try {
       const urlType = (search as any)?.type || new URLSearchParams(window.location.search).get("type");
@@ -330,21 +331,41 @@ function NewInvoice() {
   useEffect(() => {
     async function loadCajas() {
       try {
-        const { data, error } = await supabase
-          .from("cash_registers")
-          .select("*")
-          .eq("is_active", true)
-          .order("branch_code", { ascending: true })
-          .order("terminal_code", { ascending: true });
+        let loadedList: any[] = [];
 
-        if (!error && data && data.length > 0) {
-          setCajas(data);
-          setSelectedCajaId(data[0].id);
-        } else {
+        // 1. Prioridad: Cajas guardadas en localStorage para este establecimiento
+        if (activeEstablishment?.id) {
+          try {
+            const raw = localStorage.getItem(`facturaos_cajas_${activeEstablishment.id}`);
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                loadedList = parsed;
+              }
+            }
+          } catch {}
+        }
+
+        // 2. Si no hay en localStorage, consultar en Supabase
+        if (loadedList.length === 0) {
+          const { data, error } = await supabase
+            .from("cash_registers")
+            .select("*")
+            .eq("is_active", true)
+            .order("branch_code", { ascending: true })
+            .order("terminal_code", { ascending: true });
+
+          if (!error && data && data.length > 0) {
+            loadedList = data;
+          }
+        }
+
+        // 3. Fallback por defecto si no existen
+        if (loadedList.length === 0) {
           const defaultCaja = {
-            id: "default-caja",
+            id: `caja-${activeEstablishment?.code || "001"}-1`,
             branch_code: "001",
-            branch_name: "Casa Matriz",
+            branch_name: activeEstablishment?.name || "Casa Matriz",
             terminal_code: "00001",
             terminal_name: "Caja 1 - Principal",
             next_invoice_number: 1,
@@ -353,15 +374,17 @@ function NewInvoice() {
             next_debit_note_number: 1,
             is_active: true,
           };
-          setCajas([defaultCaja]);
-          setSelectedCajaId(defaultCaja.id);
+          loadedList = [defaultCaja];
         }
+
+        setCajas(loadedList);
+        setSelectedCajaId((prev) => (loadedList.some((c) => c.id === prev) ? prev : loadedList[0].id));
       } catch (err) {
         console.error("Error cargando cajas:", err);
       }
     }
     loadCajas();
-  }, []);
+  }, [activeEstablishment?.id]);
 
   // Receptor (Inicia en blanco para que el usuario elija o escriba)
   const [clientId, setClientId] = useState<string>("");
@@ -658,7 +681,7 @@ function NewInvoice() {
         correo: activeEstablishment?.email || "facturacion@grupogtres.com",
       },
       receptor: receptorPayload,
-      codigoActividad: activeEstablishment?.economic_activity_code || (emisorActivityCode?.replace(".", "") === "62090" ? "620901" : (emisorActivityCode?.replace(".", "") || "620901")),
+      codigoActividad: (emisorActivityCode?.replace(".", "") === "62090" ? "620901" : emisorActivityCode?.replace(".", "")) || activeEstablishment?.economic_activity_code || "452001",
       condicionVenta: (saleCondition as "01" | "02") || "01",
       mediosPago: [paymentMethod as "01"],
       moneda: (currency as "CRC" | "USD") || "CRC",
@@ -789,9 +812,11 @@ function NewInvoice() {
             .eq("id", activeCaja.id);
         }
 
-        setCajas((prev) =>
-          prev.map((c) => (c.id === activeCaja.id ? { ...c, [updateCol]: nextNum } : c))
-        );
+        const updatedCajas = cajas.map((c) => (c.id === activeCaja.id ? { ...c, [updateCol]: nextNum } : c));
+        setCajas(updatedCajas);
+        if (activeEstablishment?.id) {
+          localStorage.setItem(`facturaos_cajas_${activeEstablishment.id}`, JSON.stringify(updatedCajas));
+        }
       } catch (e) {
         console.error("Error incrementando consecutivo en caja:", e);
       }
@@ -1057,23 +1082,45 @@ function NewInvoice() {
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 w-full sm:w-auto">
-                {cajas.length > 1 ? (
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full sm:w-auto">
+                <div className="flex items-center gap-2 bg-background/90 dark:bg-card/90 p-1.5 rounded-xl border border-blue-500/30 shadow-2xs">
+                  <span className="text-[11px] font-bold text-foreground pl-1 whitespace-nowrap">
+                    Caja:
+                  </span>
                   <select
                     value={selectedCajaId}
-                    onChange={(e) => setSelectedCajaId(e.target.value)}
-                    className="text-xs rounded-lg border border-border bg-card px-2.5 py-1.5 font-medium text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                    onChange={(e) => {
+                      const newId = e.target.value;
+                      setSelectedCajaId(newId);
+                      const picked = cajas.find((c) => c.id === newId);
+                      if (picked) {
+                        const nameLower = (picked.terminal_name || "").toLowerCase();
+                        if (picked.terminal_code === "00001" || nameLower.includes("wash") || nameLower.includes("lavacar")) {
+                          setEmisorActivityCode("452001");
+                          toast.info("Caja cambiada a: " + picked.terminal_name, {
+                            description: "Actividad asignada: 452001 (Lavado / Car Wash)",
+                          });
+                        } else if (picked.terminal_code === "00002" || nameLower.includes("aval")) {
+                          setEmisorActivityCode("829900");
+                          toast.info("Caja cambiada a: " + picked.terminal_name, {
+                            description: "Actividad asignada: 829900 (Servicios y Avalúos)",
+                          });
+                        }
+                      }
+                    }}
+                    className="text-xs rounded-lg border border-primary/40 bg-background px-3 py-1.5 font-bold text-foreground focus:outline-none focus:ring-2 focus:ring-primary shadow-xs cursor-pointer min-w-[210px]"
                   >
                     {cajas.map((c) => (
                       <option key={c.id} value={c.id}>
-                        {c.terminal_name} (Suc {c.branch_code} / Term {c.terminal_code})
+                        {c.terminal_name} (Terminal {c.terminal_code})
                       </option>
                     ))}
                   </select>
-                ) : null}
+                </div>
+
                 <Link
                   to="/app/cajas"
-                  className="text-xs font-semibold text-primary hover:underline whitespace-nowrap ml-auto"
+                  className="text-xs font-semibold text-primary hover:underline whitespace-nowrap text-right sm:text-left"
                   title="Configurar cajas y numeración de Hacienda"
                 >
                   Mantenimiento de cajas →
