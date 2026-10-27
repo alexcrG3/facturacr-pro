@@ -333,21 +333,8 @@ function NewInvoice() {
       try {
         let loadedList: any[] = [];
 
-        // 1. Prioridad: Cajas guardadas en localStorage para este establecimiento
-        if (activeEstablishment?.id) {
-          try {
-            const raw = localStorage.getItem(`facturaos_cajas_${activeEstablishment.id}`);
-            if (raw) {
-              const parsed = JSON.parse(raw);
-              if (Array.isArray(parsed) && parsed.length > 0) {
-                loadedList = parsed;
-              }
-            }
-          } catch {}
-        }
-
-        // 2. Si no hay en localStorage, consultar en Supabase
-        if (loadedList.length === 0) {
+        // 1. Consultar directamente en Supabase cash_registers
+        try {
           const { data, error } = await supabase
             .from("cash_registers")
             .select("*")
@@ -358,6 +345,21 @@ function NewInvoice() {
           if (!error && data && data.length > 0) {
             loadedList = data;
           }
+        } catch (dbErr) {
+          console.warn("Error leyendo cajas desde Supabase:", dbErr);
+        }
+
+        // 2. Si no hay en Supabase, revisar en localStorage
+        if (loadedList.length === 0 && activeEstablishment?.id) {
+          try {
+            const raw = localStorage.getItem(`facturaos_cajas_${activeEstablishment.id}`);
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                loadedList = parsed;
+              }
+            }
+          } catch {}
         }
 
         // 3. Fallback por defecto si no existen

@@ -115,9 +115,26 @@ function CajasPage() {
 
       let storedCajas: CashRegister[] = [];
       try {
-        const raw = localStorage.getItem(`facturaos_cajas_${activeEstablishment.id}`);
-        if (raw) storedCajas = JSON.parse(raw);
-      } catch {}
+        const { data: dbCajas } = await supabase
+          .from("cash_registers")
+          .select("*")
+          .eq("is_active", true)
+          .order("branch_code", { ascending: true })
+          .order("terminal_code", { ascending: true });
+
+        if (dbCajas && dbCajas.length > 0) {
+          storedCajas = dbCajas;
+        }
+      } catch (dbErr) {
+        console.warn("Error cargando cajas desde DB:", dbErr);
+      }
+
+      if (storedCajas.length === 0) {
+        try {
+          const raw = localStorage.getItem(`facturaos_cajas_${activeEstablishment.id}`);
+          if (raw) storedCajas = JSON.parse(raw);
+        } catch {}
+      }
 
       if (storedCajas.length === 0) {
         storedCajas = [
