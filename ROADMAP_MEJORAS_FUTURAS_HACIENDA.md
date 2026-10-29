@@ -67,6 +67,16 @@ Este documento recopila las **ampliaciones estratégicas** que podemos incorpora
 
 ---
 
+### 7. Motor de Despacho Transaccional de Correo (Resend / SMTP / Gmail)
+* **¿Qué es?** 
+  Envío automático y desatendido de correos electrónicos al cliente tras la emisión de una Factura o Tiquete Electrónico.
+* **Funcionalidad:**
+  - Envío de email con los archivos adjuntos oficiales: PDF con código QR, XML firmado v4.4 y XML de Acuse de Hacienda (`MensajeHacienda.xml`).
+  - Copia automática al buzón contable de la empresa (`facturas@grupoluxxcr.com`).
+  - Plantilla HTML profesional con branding de la empresa o app emisora (AvalCar, Luxx, etc.).
+
+---
+
 ## 📊 Matriz de Priorización Sugerida
 
 | Módulo / Mejora | Prioridad | Complejidad | Negocio Beneficiado |
