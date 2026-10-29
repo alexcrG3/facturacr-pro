@@ -7,6 +7,42 @@
 
 ---
 
+### [2026-10-29 10:35] - Implementación del Exportador de Asientos Contables (Debe y Haber para Softland, QuickBooks, Contalink y Excel)
+* **Módulos Afectados:**
+  - `src/lib/hacienda/asientos-contables.ts` (Nuevo motor de pólizas contables, balance de partida doble y exportadores)
+  - `src/components/reports/AsientosContablesModal.tsx` (Nuevo modal interactivo con visor de pólizas y descarga)
+  - `src/components/reports/DeclaraHubSimulator.tsx`
+  - `src/routes/app.reports.tsx`
+  - `MANUAL_ASIENTOS_CONTABLES_PARA_DUMMIES.md`
+  - `BITACORA_INCIDENCIAS.md`
+* **Incidencia / Necesidad Reportada:**
+  - El usuario solicitó el Punto 6 (y final) de la suite premium: **Exportador de Asientos Contables (Debe y Haber)**.
+  - Para los despachos contables y contadores independientes en Costa Rica, conciliar las operaciones mensuales e ingresarlas a sistemas contables y ERPs como **Softland**, **QuickBooks**, **Contalink**, **Sigo** o **Excel** requiere transcribir facturas una por una, calcular cuentas T y balancear el Debe y el Haber manualmente, lo que insume días de trabajo por empresa y genera errores humanos de descuadre.
+* **Causa Raíz:**
+  - Falta de un generador automático de asientos contables conforme a las Normas Internacionales de Información Financiera (NIIF), la Ley 9635 del IVA y la Ley 7092 de Renta de Costa Rica con cuadratura estricta garantizada de ₡0.00.
+* **Cómo se resolvió:**
+  1. **Motor de Asientos Contables (`asientos-contables.ts`):**
+     - Catálogo estándar de cuentas contables de Costa Rica: Cuentas por Cobrar (1120-01), Bancos (1110-01), IVA Soportado Crédito (1130-01/02), Saldo a Favor (1135-01), Proveedores (2105-01), IVA Débito (2110-01/02), IVA por Pagar D-104 (2115-01), Ventas Netas (4010-01/02/03), Compras Mercancías (5010-01), Gastos Operativos (5020-01) y Gasto por IVA No Deducible por Prorrata (5030-01).
+     - Generación de 4 pólizas mensuales automáticas:
+       - **Asiento 1:** Póliza de Ingresos y Facturación de Ventas.
+       - **Asiento 2:** Póliza de Egresos y Compras de Bienes / Servicios.
+       - **Asiento 3:** Póliza de Cierre y Liquidación Tributaria del IVA D-104 (con aplicación de la prorrata).
+       - **Asiento 4:** Póliza Consolidada Maestra (todo el mes en 1 solo asiento cuadrado).
+     - Motor matemático de balanceo automático que absorbe microdecimales de redondeo a la cuenta de Ajuste por Redondeo (5090-01) asegurando `Diferencia = ₡0.00`.
+     - Exportador a libro Excel (`.xlsx`) estructurado con 6 pestañas: Resumen General, Asiento Ventas, Asiento Compras, Liquidación D-104, Formato Softland y Formato QuickBooks.
+     - Exportadores directos a CSV para Softland ERP y QuickBooks Online / Desktop.
+     - Exportador de texto tabulado para pegar instantáneamente en Excel o ERP con `Ctrl+V`.
+  2. **Interfaz de Usuario (`AsientosContablesModal.tsx`):**
+     - Sello de balance `✓ Asiento Cuadrado (₡0)`.
+     - Tarjetas de control rápido (Total Débito, Total Crédito, Diferencia, Liquidación D-104).
+     - Pestañas conmutables entre las 4 pólizas con conteo de líneas.
+     - Tabla con código de cuenta, nombre, centro de costo, Debe, Haber, referencia y concepto.
+  3. **Integración en DeclaraHub y Reportes:**
+     - Botón `Asientos Contables (Debe/Haber)` en la barra superior de `app.reports.tsx` y en el banner principal de `DeclaraHubSimulator.tsx`.
+* **Prevención:** Toda empresa puede entregar a su contador el paquete de pólizas mensuales en el primer día hábil del mes siguiente con cuadratura certificada al centavo.
+
+---
+
 ### [2026-10-29 10:25] - Implementación del Módulo Anual D-151 Automatizado (Clientes y Proveedores > ₡2,500,000)
 * **Módulos Afectados:**
   - `src/lib/hacienda/d151-generator.ts` (Nuevo motor de consolidación anual, exportador Excel y CSV DGT)

@@ -22,6 +22,7 @@ import {
   AlertCircle,
   FileText,
   Trash2,
+  Scale,
 } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/common/PageHeader";
@@ -37,6 +38,7 @@ import { ImportXmlModal } from "@/components/reports/ImportXmlModal";
 import { DeclaraHubSimulator } from "@/components/reports/DeclaraHubSimulator";
 import { BandejaAceptacionGastosModal } from "@/components/reports/BandejaAceptacionGastosModal";
 import { D151ReportModal } from "@/components/reports/D151ReportModal";
+import { AsientosContablesModal } from "@/components/reports/AsientosContablesModal";
 import { formatCRC } from "@/lib/mock-data";
 import { useApp } from "@/contexts/AppContext";
 
@@ -72,6 +74,9 @@ function ReportsPage() {
 
   // Modal de Reporte Informativo Anual D-151 (> ₡2.5M)
   const [d151ModalOpen, setD151ModalOpen] = useState(false);
+
+  // Modal de Exportador de Asientos Contables (Debe y Haber para ERPs)
+  const [asientosModalOpen, setAsientosModalOpen] = useState(false);
 
   // Cargar datos
   const refrescarComprobantes = async () => {
@@ -233,6 +238,13 @@ function ReportsPage() {
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
+              onClick={() => setAsientosModalOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-3 py-2 text-xs font-bold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-500/20 transition-colors cursor-pointer"
+            >
+              <Scale className="h-4 w-4 text-indigo-600" /> Asientos Contables (Debe/Haber)
+            </button>
+            <button
+              type="button"
               onClick={() => setD151ModalOpen(true)}
               className="inline-flex items-center gap-1.5 rounded-lg border border-purple-500/30 bg-purple-500/10 px-3 py-2 text-xs font-bold text-purple-700 dark:text-purple-300 hover:bg-purple-500/20 transition-colors cursor-pointer"
             >
@@ -375,6 +387,7 @@ function ReportsPage() {
           onDescargarExcel={handleDescargarExcel}
           onAbrirAceptadorGastos={() => setAceptadorModalOpen(true)}
           onAbrirD151={() => setD151ModalOpen(true)}
+          onAbrirAsientosContables={() => setAsientosModalOpen(true)}
         />
       ) : (
         <>
@@ -678,6 +691,17 @@ function ReportsPage() {
         comprobantes={comprobantes}
         empresaNombre={activeEstablishment?.name || "Empresa Actual"}
         empresaCedula={activeEstablishment?.legal_id || "3101483899"}
+      />
+
+      {/* Modal Exportador de Asientos Contables (Debe y Haber) */}
+      <AsientosContablesModal
+        isOpen={asientosModalOpen}
+        onClose={() => setAsientosModalOpen(false)}
+        comprobantes={filtrados}
+        empresaNombre={activeEstablishment?.name || "Empresa Actual"}
+        empresaCedula={activeEstablishment?.legal_id || "3101483899"}
+        periodoDesde={desde}
+        periodoHasta={hasta}
       />
     </div>
   );

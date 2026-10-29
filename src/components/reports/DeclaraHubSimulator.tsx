@@ -13,6 +13,7 @@ import {
   Layers,
   ArrowRight,
   Info,
+  Scale,
 } from "lucide-react";
 import { toast } from "sonner";
 import { formatCRC } from "@/lib/mock-data";
@@ -29,6 +30,7 @@ interface DeclaraHubSimulatorProps {
   onDescargarExcel: () => void;
   onAbrirAceptadorGastos?: () => void;
   onAbrirD151?: () => void;
+  onAbrirAsientosContables?: () => void;
 }
 
 export function DeclaraHubSimulator({
@@ -40,6 +42,7 @@ export function DeclaraHubSimulator({
   onDescargarExcel,
   onAbrirAceptadorGastos,
   onAbrirD151,
+  onAbrirAsientosContables,
 }: DeclaraHubSimulatorProps) {
   const [copiedCasilla, setCopiedCasilla] = useState<string | null>(null);
 
@@ -243,6 +246,18 @@ Generado automáticamente por FacturaOS DeclaraHub.`;
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5">
+            {onAbrirAsientosContables && (
+              <button
+                type="button"
+                onClick={onAbrirAsientosContables}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-indigo-500/40 bg-indigo-500/10 px-3.5 py-2.5 text-xs font-bold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-500/20 transition-all cursor-pointer"
+              >
+                <Scale className="h-4 w-4 text-indigo-500" /> Asientos Contables
+                <span className="rounded-full bg-indigo-500/20 px-1.5 py-0.2 text-[10px] font-black uppercase">
+                  Debe / Haber
+                </span>
+              </button>
+            )}
             {onAbrirD151 && (
               <button
                 type="button"
