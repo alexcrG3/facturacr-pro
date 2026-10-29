@@ -17,6 +17,7 @@ import {
   ChevronRight,
   Store,
   ShieldCheck,
+  Briefcase,
 } from "lucide-react";
 import { Logo } from "./Logo";
 import { cn } from "@/lib/utils";
@@ -58,6 +59,7 @@ const nav: NavItem[] = [
   { to: "/app/cabys", label: "Mis CAByS", icon: Sparkles, roles: ["super_admin", "admin", "contador", "vendedor"] },
   { to: "/app/cajas", label: "Cajas", icon: Store, roles: ["super_admin", "admin", "contador"] },
   { to: "/app/reports", label: "DeclaraHub (D-104)", icon: BarChart3, roles: ["super_admin", "admin", "contador"] },
+  { to: "/app/contador", label: "Portal Despacho", icon: Briefcase, roles: ["super_admin", "admin", "contador"] },
   { to: "/app/gmail", label: "Descargar de Gmail", icon: Mail, roles: ["super_admin", "admin", "contador"] },
 ];
 

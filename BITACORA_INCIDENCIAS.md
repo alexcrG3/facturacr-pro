@@ -7,6 +7,40 @@
 
 ---
 
+### [2026-10-29 10:05] - Lanzamiento del "Portal del Contador" (Despacho Multi-Empresa & Rol Auditor de Solo Lectura)
+* **Módulos Afectados:**
+  - `src/routes/app.contador.tsx` (Nueva pantalla maestra del despacho)
+  - `src/components/layout/AppSidebar.tsx` (Enlace directo a `Portal Despacho`)
+  - `src/contexts/AppContext.tsx` (Habilitación de conmutación multi-empresa para rol `contador`)
+  - `src/routeTree.gen.ts` (Generación de ruta `/app/contador`)
+  - `BITACORA_INCIDENCIAS.md`
+* **Incidencia / Necesidad Reportada:**
+  - El usuario solicitó el Punto 3 de la suite premium: **"Portal del Contador" con Rol Auditor (Multi-Empresa en 1 Pantalla)**.
+  - Los despachos contables y contadores independientes en Costa Rica administran múltiples empresas clientes (ej. Luxx Car Wash, BarberApp, AvalCar, Gas Express, Nexus Sport, Nexus Clinic, Grupo G Tres) y pierden horas saliendo e iniciando sesión para revisar cada declaración de IVA D-104 individualmente.
+  - Al mismo tiempo, los dueños de negocios requieren que el contador tenga acceso a auditar y exportar libros contables, pero con **bloqueo estricto de seguridad** para no alterar llaves criptográficas `.p12`, contraseñas ni emitir facturas indebidas.
+* **Causa Raíz:**
+  - La arquitectura anterior aislaba estrictamente a los usuarios por inquilino único, impidiendo que un contador profesional auditara su cartera de empresas desde una sola consola ejecutiva.
+* **Cómo se resolvió:**
+  1. **Consola Centralizada del Despacho (`app.contador.tsx`):**
+     - Directorio interactivo de todos los clientes contables con estado fiscal en tiempo real:
+       - Total de ventas emitidas e IVA Débito.
+       - Total de compras soportadas e IVA Crédito.
+       - Semáforo de comprobantes pendientes de confirmación CCE.
+       - Factor de Prorrata del IVA [Casilla 114].
+       - Veredicto oficial D-104: Saldo neto a pagar [Casilla 140] o Saldo a favor [Casilla 141].
+     - KPIs consolidados de la cartera (volumen total facturado, empresas con impuesto por pagar vs a favor).
+     - Botón de auditoría en 1 clic que conmuta la empresa activa y abre DeclaraHub automáticamente.
+     - Botón de descarga de libros en Excel por cliente.
+     - Botón de notificación para WhatsApp que genera el mensaje estructurado del cierre fiscal listo para enviar al cliente.
+  2. **Habilitación de Rol Auditor en `AppContext.tsx`:**
+     - Se actualizó la regla de seguridad para permitir que usuarios con `role === "contador"` conmuten fluidamente entre todas las empresas de su cartera para auditoría.
+     - La sección `/app/settings` se mantiene protegida exclusivamente para administradores.
+  3. **Modal de Invitación al Contador:**
+     - Permite ingresar el correo y nombre del despacho con asignación del rol `Contador / Auditor (Solo Lectura)`.
+* **Prevención:** Mantener el rol de contador como una capa de auditoría no destructiva que garantice total visibilidad fiscal sin comprometer la integridad operativa del negocio.
+
+---
+
 ### [2026-10-29 09:55] - Implementación del Cálculo Automático de Prorrata del IVA (Casillas [114] y [131]) y Auditor de Proporcionalidad (Art. 30 a 34 Ley 9635)
 * **Módulos Afectados:**
   - `src/components/reports/DeclaraHubSimulator.tsx`

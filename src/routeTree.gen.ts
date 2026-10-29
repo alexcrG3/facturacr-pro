@@ -20,6 +20,7 @@ import { Route as AppCabysRouteImport } from './routes/app.cabys'
 import { Route as AppCajasRouteImport } from './routes/app.cajas'
 import { Route as AppClientsRouteImport } from './routes/app.clients'
 import { Route as AppCommandCenterRouteImport } from './routes/app.command-center'
+import { Route as AppContadorRouteImport } from './routes/app.contador'
 import { Route as AppDashboardRouteImport } from './routes/app.dashboard'
 import { Route as AppGmailRouteImport } from './routes/app.gmail'
 import { Route as AppInvoicesRouteImport } from './routes/app.invoices'
@@ -84,6 +85,11 @@ const AppCommandCenterRoute = AppCommandCenterRouteImport.update({
   path: '/command-center',
   getParentRoute: () => AppRoute,
 } as any)
+const AppContadorRoute = AppContadorRouteImport.update({
+  id: '/contador',
+  path: '/contador',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppDashboardRoute = AppDashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
@@ -136,6 +142,7 @@ export interface FileRoutesByFullPath {
   '/app/cajas': typeof AppCajasRoute
   '/app/clients': typeof AppClientsRoute
   '/app/command-center': typeof AppCommandCenterRoute
+  '/app/contador': typeof AppContadorRoute
   '/app/dashboard': typeof AppDashboardRoute
   '/app/gmail': typeof AppGmailRoute
   '/app/invoices': typeof AppInvoicesRouteWithChildren
@@ -156,6 +163,7 @@ export interface FileRoutesByTo {
   '/app/cajas': typeof AppCajasRoute
   '/app/clients': typeof AppClientsRoute
   '/app/command-center': typeof AppCommandCenterRoute
+  '/app/contador': typeof AppContadorRoute
   '/app/dashboard': typeof AppDashboardRoute
   '/app/gmail': typeof AppGmailRoute
   '/app/products': typeof AppProductsRoute
@@ -177,6 +185,7 @@ export interface FileRoutesById {
   '/app/cajas': typeof AppCajasRoute
   '/app/clients': typeof AppClientsRoute
   '/app/command-center': typeof AppCommandCenterRoute
+  '/app/contador': typeof AppContadorRoute
   '/app/dashboard': typeof AppDashboardRoute
   '/app/gmail': typeof AppGmailRoute
   '/app/invoices': typeof AppInvoicesRouteWithChildren
@@ -200,6 +209,7 @@ export interface FileRouteTypes {
     | '/app/cajas'
     | '/app/clients'
     | '/app/command-center'
+    | '/app/contador'
     | '/app/dashboard'
     | '/app/gmail'
     | '/app/invoices'
@@ -220,6 +230,7 @@ export interface FileRouteTypes {
     | '/app/cajas'
     | '/app/clients'
     | '/app/command-center'
+    | '/app/contador'
     | '/app/dashboard'
     | '/app/gmail'
     | '/app/products'
@@ -240,6 +251,7 @@ export interface FileRouteTypes {
     | '/app/cajas'
     | '/app/clients'
     | '/app/command-center'
+    | '/app/contador'
     | '/app/dashboard'
     | '/app/gmail'
     | '/app/invoices'
@@ -339,6 +351,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppCommandCenterRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/contador': {
+      id: '/app/contador'
+      path: '/contador'
+      fullPath: '/app/contador'
+      preLoaderRoute: typeof AppContadorRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/app/dashboard': {
       id: '/app/dashboard'
       path: '/dashboard'
@@ -417,6 +436,7 @@ interface AppRouteChildren {
   AppCajasRoute: typeof AppCajasRoute
   AppClientsRoute: typeof AppClientsRoute
   AppCommandCenterRoute: typeof AppCommandCenterRoute
+  AppContadorRoute: typeof AppContadorRoute
   AppDashboardRoute: typeof AppDashboardRoute
   AppGmailRoute: typeof AppGmailRoute
   AppInvoicesRoute: typeof AppInvoicesRouteWithChildren
@@ -431,6 +451,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppCajasRoute: AppCajasRoute,
   AppClientsRoute: AppClientsRoute,
   AppCommandCenterRoute: AppCommandCenterRoute,
+  AppContadorRoute: AppContadorRoute,
   AppDashboardRoute: AppDashboardRoute,
   AppGmailRoute: AppGmailRoute,
   AppInvoicesRoute: AppInvoicesRouteWithChildren,

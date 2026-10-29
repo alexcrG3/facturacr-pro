@@ -92,10 +92,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     const email = (currentUserEmail || user.email || "").toLowerCase().trim();
     const role = currentUserRole || user.role;
-    const isSuper = role === "super_admin" || email === "alex@mail.com";
+    const isSuper = role === "super_admin" || role === "contador" || email === "alex@mail.com";
     const estId = overrideEstId !== undefined ? overrideEstId : user.establishment_id;
 
-    // 1. Si es inquilino (no super_admin), anclarlo ESTRICTAMENTE a su empresa
+    // 1. Si es inquilino (no super_admin ni contador), anclarlo ESTRICTAMENTE a su empresa
     if (!isSuper) {
       // Prioridad 1: establishment_id explícito en la base de datos (profiles.establishment_id)
       if (estId) {
@@ -169,8 +169,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const setActiveEstablishment = (est: EstablishmentRecord) => {
-    // Protección multi-tenant: si NO es super_admin, no se permite conmutar a otra empresa
-    if (!isSuperAdmin && user.establishment_id && est.id !== user.establishment_id) {
+    // Protección multi-tenant: si NO es super_admin ni contador, no se permite conmutar a otra empresa
+    const isAuditorOrSuper = isSuperAdmin || user.role === "contador";
+    if (!isAuditorOrSuper && user.establishment_id && est.id !== user.establishment_id) {
       console.warn("Acceso denegado: el usuario no tiene permisos para conmutar de empresa");
       return;
     }
