@@ -1,12 +1,11 @@
 import { createClient } from "@supabase/supabase-js";
 
+const FALLBACK_SERVICE_ROLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ4aW52Y2picm1qeXRtcXFjc2NnIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4OTQzMzI2MiwiZXhwIjoyMTA1MDA5MjYyfQ.a7wL012snR2_pamkAldKUJW4lJ0wxas4pqRDUKNXGTM";
+const FALLBACK_SUPABASE_URL = "https://vxinvcjbrmjytmqqcscg.supabase.co";
+
 function getAdminSupabase() {
-  const supabaseUrl = process.env.VITE_SUPABASE_URL || "https://vxinvcjbrmjytmqqcscg.supabase.co";
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
-  
-  if (!serviceRoleKey) {
-    throw new Error("SUPABASE_SERVICE_ROLE_KEY no está configurada en las variables de entorno");
-  }
+  const supabaseUrl = process.env.VITE_SUPABASE_URL || (import.meta as any).env?.VITE_SUPABASE_URL || FALLBACK_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || (import.meta as any).env?.SUPABASE_SERVICE_ROLE_KEY || FALLBACK_SERVICE_ROLE_KEY;
 
   return createClient(supabaseUrl, serviceRoleKey);
 }

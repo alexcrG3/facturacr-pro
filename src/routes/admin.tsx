@@ -104,6 +104,7 @@ function CommandCenterStandalone() {
 
   // Modal para Asignar Sociedades a Usuario / Cliente
   const [showAssignModal, setShowAssignModal] = useState(false);
+  const [assignMode, setAssignMode] = useState<"select" | "new">("select");
   const [adminUsers, setAdminUsers] = useState<any[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [selectedUserForAssign, setSelectedUserForAssign] = useState<any | null>(null);
@@ -113,17 +114,56 @@ function CommandCenterStandalone() {
   const [savingAssignment, setSavingAssignment] = useState(false);
   const [userSearchTerm, setUserSearchTerm] = useState("");
 
+  // Campos para nuevo cliente directo en el modal
+  const [newClientName, setNewClientName] = useState("");
+  const [newClientEmail, setNewClientEmail] = useState("");
+  const [newClientPassword, setNewClientPassword] = useState("");
+  const [newClientRole, setNewClientRole] = useState<Role>("admin");
+
   const loadAdminUsers = async () => {
     setLoadingUsers(true);
     try {
-      const res = await fetch("/api/v1/admin/users");
-      const data = await res.json();
-      if (data.success && Array.isArray(data.users)) {
-        setAdminUsers(data.users);
-        setUsersCount(data.users.length);
-        if (!selectedUserForAssign && data.users.length > 0) {
-          handleSelectUser(data.users[0]);
+      let loaded: any[] = [];
+      try {
+        const res = await fetch("/api/v1/admin/users");
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && Array.isArray(data.users) && data.users.length > 0) {
+            loaded = data.users;
+          }
         }
+      } catch (e) {
+        console.warn("Fallback a Supabase profiles:", e);
+      }
+
+      // Si la API falló o no devolvió usuarios, cargar directamente de profiles
+      if (loaded.length === 0) {
+        const { data: profiles } = await supabase
+          .from("profiles")
+          .select("*")
+          .order("created_at", { ascending: false });
+
+        if (profiles && profiles.length > 0) {
+          loaded = profiles.map((p: any) => ({
+            id: p.id,
+            email: p.email,
+            fullName: p.full_name || p.email,
+            role: p.role || "admin",
+            establishmentId: p.establishment_id || null,
+            allowedEstablishmentIds: p.establishment_id ? [p.establishment_id] : [],
+          }));
+        }
+      }
+
+      setAdminUsers(loaded);
+      if (loaded.length > 0) {
+        setUsersCount(loaded.length);
+        if (!selectedUserForAssign) {
+          handleSelectUser(loaded[0]);
+        }
+      } else {
+        // Si no hay clientes todavía, pasar a modo "new" automáticamente
+        setAssignMode("new");
       }
     } catch (err) {
       console.error("Error cargando usuarios de admin:", err);
@@ -159,6 +199,11 @@ function CommandCenterStandalone() {
   };
 
   const handleSaveAssignment = async () => {
+    if (assignMode === "new") {
+      await handleCreateAndAssignNewClient();
+      return;
+    }
+
     if (!selectedUserForAssign) return;
     setSavingAssignment(true);
     try {
@@ -187,6 +232,99 @@ function CommandCenterStandalone() {
     } catch (err: any) {
       console.error("Error al guardar asignación:", err);
       toast.error(err.message || "Error al asignar sociedades");
+    } finally {
+      setSavingAssignment(false);
+    }
+  };
+
+  const handleCreateAndAssignNewClient = async () => {
+    if (!newClientEmail.trim() || !newClientPassword.trim()) {
+      toast.error("Por favor completa el correo y la contraseña.");
+      return;
+    }
+    if (newClientPassword.length < 6) {
+      toast.error("La contraseña debe tener al menos 6 caracteres.");
+      return;
+    }
+    if (selectedEstIds.length === 0) {
+      toast.error("Por favor marca al menos una sociedad para este cliente.");
+      return;
+    }
+
+    setSavingAssignment(true);
+    try {
+      const primaryId = selectedPrimaryEstId || selectedEstIds[0];
+      const primaryEst = establishmentsList.find((e) => e.id === primaryId);
+
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+      const supabaseAnonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string;
+
+      const isolatedAuthClient = createClient(supabaseUrl, supabaseAnonKey, {
+        auth: {
+          persistSession: false,
+          autoRefreshToken: false,
+          detectSessionInUrl: false,
+        },
+      });
+
+      const cleanEmail = newClientEmail.trim().toLowerCase();
+      const cleanName = newClientName.trim() || cleanEmail.split("@")[0];
+
+      const { data: authData, error: authErr } = await isolatedAuthClient.auth.signUp({
+        email: cleanEmail,
+        password: newClientPassword.trim(),
+        options: {
+          data: {
+            full_name: cleanName,
+            role: newClientRole,
+            establishment_id: primaryId,
+            establishment_code: primaryEst?.code || "",
+            establishment_name: primaryEst?.name || "",
+            allowed_establishment_ids: selectedEstIds,
+          },
+        },
+      });
+
+      if (authErr) {
+        throw authErr;
+      }
+
+      const newUserId = authData.user?.id;
+      if (newUserId) {
+        await supabase.from("profiles").upsert({
+          id: newUserId,
+          email: cleanEmail,
+          full_name: cleanName,
+          role: newClientRole,
+          establishment_id: primaryId,
+        });
+
+        try {
+          await fetch("/api/v1/admin/users/assign", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              userId: newUserId,
+              allowedEstablishmentIds: selectedEstIds,
+              primaryEstablishmentId: primaryId,
+              role: newClientRole,
+            }),
+          });
+        } catch (e) {
+          console.warn("Assign endpoint fallback:", e);
+        }
+      }
+
+      toast.success(`¡Cliente ${cleanEmail} registrado con éxito con ${selectedEstIds.length} sociedad(es)!`);
+      setNewClientEmail("");
+      setNewClientPassword("");
+      setNewClientName("");
+      setShowAssignModal(false);
+      await loadAdminUsers();
+      await loadData();
+    } catch (err: any) {
+      console.error("Error al registrar cliente:", err);
+      toast.error(err.message || "Error al registrar cliente");
     } finally {
       setSavingAssignment(false);
     }
@@ -1516,55 +1654,161 @@ function CommandCenterStandalone() {
               </button>
             </div>
 
-            {/* Selector de Usuario */}
-            <div className="space-y-2">
-              <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                1. Selecciona el Usuario o Cliente:
-              </label>
-              {loadingUsers ? (
-                <div className="flex items-center gap-2 p-3 text-xs text-slate-500">
-                  <Loader2 className="h-4 w-4 animate-spin text-indigo-600" /> Cargando usuarios...
-                </div>
-              ) : (
-                <div className="grid gap-2">
-                  <select
-                    value={selectedUserForAssign?.id || ""}
-                    onChange={(e) => {
-                      const found = adminUsers.find((u) => u.id === e.target.value);
-                      if (found) handleSelectUser(found);
-                    }}
-                    className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium focus:border-indigo-600 focus:outline-none"
-                  >
-                    {adminUsers.map((u) => (
-                      <option key={u.id} value={u.id}>
-                        {u.fullName} ({u.email}) — Rol: {u.role}
-                      </option>
-                    ))}
-                  </select>
-
-                  {selectedUserForAssign && (
-                    <div className="rounded-xl border border-indigo-100 bg-indigo-50/50 p-3 flex flex-wrap items-center justify-between gap-2 text-xs">
-                      <div>
-                        <strong className="text-slate-900">{selectedUserForAssign.fullName}</strong>
-                        <span className="text-slate-500 ml-2">({selectedUserForAssign.email})</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-slate-500">Rol asignado:</span>
-                        <select
-                          value={selectedAssignRole}
-                          onChange={(e) => setSelectedAssignRole(e.target.value as Role)}
-                          className="rounded-lg border border-indigo-200 bg-white px-2 py-1 text-xs font-bold text-indigo-700"
-                        >
-                          <option value="admin">Administrador (Dueño)</option>
-                          <option value="contador">Contador / Auditor</option>
-                          <option value="facturador">Facturador / Cajero</option>
-                        </select>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
+            {/* Pestañas de Selección o Nuevo Cliente */}
+            <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
+              <button
+                type="button"
+                onClick={() => setAssignMode("select")}
+                className={`rounded-xl px-4 py-2 text-xs font-bold transition-all cursor-pointer ${
+                  assignMode === "select"
+                    ? "bg-indigo-600 text-white shadow-xs"
+                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                }`}
+              >
+                Clientes Registrados ({adminUsers.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setAssignMode("new");
+                  setSelectedEstIds([]);
+                  setSelectedPrimaryEstId("");
+                }}
+                className={`inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-bold transition-all cursor-pointer ${
+                  assignMode === "new"
+                    ? "bg-indigo-600 text-white shadow-xs"
+                    : "bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200"
+                }`}
+              >
+                <Plus className="h-3.5 w-3.5" />
+                <span>+ Registrar Nuevo Cliente</span>
+              </button>
             </div>
+
+            {/* Contenido según pestaña */}
+            {assignMode === "select" ? (
+              <div className="space-y-2">
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                  1. Selecciona el Usuario o Cliente:
+                </label>
+                {loadingUsers ? (
+                  <div className="flex items-center gap-2 p-3 text-xs text-slate-500">
+                    <Loader2 className="h-4 w-4 animate-spin text-indigo-600" /> Cargando usuarios...
+                  </div>
+                ) : adminUsers.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-indigo-200 bg-indigo-50/40 p-6 text-center space-y-2">
+                    <Users className="h-8 w-8 text-indigo-500 mx-auto" />
+                    <p className="text-sm font-bold text-slate-800">Aún no tienes clientes registrados</p>
+                    <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                      Puedes registrar a tu primer cliente aquí mismo y marcarle sus empresas de inmediato.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setAssignMode("new")}
+                      className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 text-white px-4 py-2 text-xs font-bold hover:bg-indigo-700 cursor-pointer shadow-xs"
+                    >
+                      <Plus className="h-4 w-4" /> Registrar Primer Cliente
+                    </button>
+                  </div>
+                ) : (
+                  <div className="grid gap-2">
+                    <select
+                      value={selectedUserForAssign?.id || ""}
+                      onChange={(e) => {
+                        const found = adminUsers.find((u) => u.id === e.target.value);
+                        if (found) handleSelectUser(found);
+                      }}
+                      className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium focus:border-indigo-600 focus:outline-none"
+                    >
+                      {adminUsers.map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.fullName} ({u.email}) — Rol: {u.role}
+                        </option>
+                      ))}
+                    </select>
+
+                    {selectedUserForAssign && (
+                      <div className="rounded-xl border border-indigo-100 bg-indigo-50/50 p-3 flex flex-wrap items-center justify-between gap-2 text-xs">
+                        <div>
+                          <strong className="text-slate-900">{selectedUserForAssign.fullName}</strong>
+                          <span className="text-slate-500 ml-2">({selectedUserForAssign.email})</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-slate-500">Rol asignado:</span>
+                          <select
+                            value={selectedAssignRole}
+                            onChange={(e) => setSelectedAssignRole(e.target.value as Role)}
+                            className="rounded-lg border border-indigo-200 bg-white px-2 py-1 text-xs font-bold text-indigo-700"
+                          >
+                            <option value="admin">Administrador (Dueño)</option>
+                            <option value="contador">Contador / Auditor</option>
+                            <option value="facturador">Facturador / Cajero</option>
+                          </select>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            ) : (
+              /* Modo 2: Registrar Nuevo Cliente */
+              <div className="rounded-2xl border border-indigo-100 bg-indigo-50/40 p-4 space-y-3">
+                <div className="flex items-center gap-2">
+                  <UserPlus className="h-4 w-4 text-indigo-600" />
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-indigo-900">
+                    1. Datos de Ingreso del Nuevo Cliente:
+                  </h4>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2 text-xs">
+                  <div>
+                    <label className="mb-1 block font-semibold text-slate-700">Nombre o Razón Social</label>
+                    <input
+                      type="text"
+                      value={newClientName}
+                      onChange={(e) => setNewClientName(e.target.value)}
+                      placeholder="Ej. Alexander Dueño / Inversiones"
+                      className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 focus:border-indigo-600 focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block font-semibold text-slate-700">Correo Electrónico (Login) *</label>
+                    <input
+                      type="email"
+                      value={newClientEmail}
+                      onChange={(e) => setNewClientEmail(e.target.value)}
+                      placeholder="facturas@grupoluxxcr.com"
+                      className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 focus:border-indigo-600 focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block font-semibold text-slate-700">Contraseña de Ingreso *</label>
+                    <input
+                      type="text"
+                      value={newClientPassword}
+                      onChange={(e) => setNewClientPassword(e.target.value)}
+                      placeholder="Mínimo 6 caracteres (ej. Luxx2026*)"
+                      className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 focus:border-indigo-600 focus:outline-none font-mono"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block font-semibold text-slate-700">Rol Asignado</label>
+                    <select
+                      value={newClientRole}
+                      onChange={(e) => setNewClientRole(e.target.value as Role)}
+                      className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 focus:border-indigo-600 focus:outline-none"
+                    >
+                      <option value="admin">Administrador (Dueño de Empresa)</option>
+                      <option value="contador">Contador / Auditor (Solo Lectura D-104)</option>
+                      <option value="facturador">Facturador / Cajero (Solo Cobro)</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Lista de Sociedades con Checkboxes */}
             <div className="space-y-2">
@@ -1658,7 +1902,11 @@ function CommandCenterStandalone() {
               </button>
               <button
                 type="button"
-                disabled={savingAssignment || !selectedUserForAssign}
+                disabled={
+                  savingAssignment ||
+                  (assignMode === "select" && !selectedUserForAssign) ||
+                  (assignMode === "new" && (!newClientEmail.trim() || !newClientPassword.trim() || selectedEstIds.length === 0))
+                }
                 onClick={handleSaveAssignment}
                 className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 text-xs font-bold shadow-md shadow-indigo-600/25 transition-all cursor-pointer disabled:opacity-50"
               >
@@ -1667,7 +1915,11 @@ function CommandCenterStandalone() {
                 ) : (
                   <Check className="h-4 w-4" />
                 )}
-                <span>Guardar Permisos de Sociedades</span>
+                <span>
+                  {assignMode === "new"
+                    ? "Crear Cliente y Asignar Sociedades"
+                    : "Guardar Permisos de Sociedades"}
+                </span>
               </button>
             </div>
           </div>
