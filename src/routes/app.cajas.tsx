@@ -118,13 +118,34 @@ function CajasPage() {
         const { data: dbCajas } = await supabase
           .from("cash_registers")
           .select("*")
-          .eq("establishment_id", activeEstablishment.id)
           .eq("is_active", true)
           .order("branch_code", { ascending: true })
           .order("terminal_code", { ascending: true });
 
         if (dbCajas && dbCajas.length > 0) {
-          storedCajas = dbCajas;
+          const cleanCedula = (activeEstablishment.legal_id || "").replace(/\D/g, "");
+          const isLuxxCarWash =
+            cleanCedula === "3102832920" ||
+            activeEstablishment.code?.includes("luxx") ||
+            (activeEstablishment.name || "").toLowerCase().includes("luxx") ||
+            (activeEstablishment.app_name || "").toLowerCase().includes("luxx") ||
+            activeEstablishment.name?.includes("3102832920");
+
+          if (isLuxxCarWash) {
+            // SRL. 3102832920 (Luxx Car Wash y AvalCar): Cargar exactamente sus 2 cajas oficiales de la BD
+            storedCajas = dbCajas.filter((c: any) =>
+              (c.branch_name || "").toLowerCase().includes("luxx") ||
+              (c.terminal_name || "").toLowerCase().includes("luxx") ||
+              (c.terminal_name || "").toLowerCase().includes("aval")
+            );
+          } else {
+            // Para las demás empresas (Grupo G Tres, Empresa 107680742, Gas Express):
+            // No mostrar las cajas de Luxx / AvalCar
+            try {
+              const raw = localStorage.getItem(`facturaos_cajas_${activeEstablishment.id}`);
+              if (raw) storedCajas = JSON.parse(raw);
+            } catch {}
+          }
         }
       } catch (dbErr) {
         console.warn("Error cargando cajas desde DB:", dbErr);
@@ -152,7 +173,7 @@ function CajasPage() {
             is_active: true,
           },
         ];
-      } else {
+      } else if (storedCajas.length === 1) {
         storedCajas[0].next_invoice_number = Math.max(storedCajas[0].next_invoice_number || 1, maxFE + 1);
         storedCajas[0].next_ticket_number = Math.max(storedCajas[0].next_ticket_number || 1, maxTE + 1);
         storedCajas[0].next_credit_note_number = Math.max(storedCajas[0].next_credit_note_number || 1, maxNC + 1);

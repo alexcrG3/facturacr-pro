@@ -347,23 +347,32 @@ function NewInvoice() {
       try {
         let loadedList: any[] = [];
 
-        // 1. Consultar directamente en Supabase cash_registers EXCLUSIVAS de este establecimiento
+        // 1. Consultar directamente en Supabase cash_registers
         try {
-          let query = supabase
+          const { data, error } = await supabase
             .from("cash_registers")
             .select("*")
-            .eq("is_active", true);
-
-          if (activeEstablishment?.id) {
-            query = query.eq("establishment_id", activeEstablishment.id);
-          }
-
-          const { data, error } = await query
+            .eq("is_active", true)
             .order("branch_code", { ascending: true })
             .order("terminal_code", { ascending: true });
 
           if (!error && data && data.length > 0) {
-            loadedList = data;
+            const cleanCedula = (activeEstablishment?.legal_id || "").replace(/\D/g, "");
+            const isLuxxCarWash =
+              cleanCedula === "3102832920" ||
+              activeEstablishment?.code?.includes("luxx") ||
+              (activeEstablishment?.name || "").toLowerCase().includes("luxx") ||
+              (activeEstablishment?.app_name || "").toLowerCase().includes("luxx") ||
+              activeEstablishment?.name?.includes("3102832920");
+
+            if (isLuxxCarWash) {
+              // Cargar exactamente las cajas oficiales de Luxx y AvalCar
+              loadedList = data.filter((c: any) =>
+                (c.branch_name || "").toLowerCase().includes("luxx") ||
+                (c.terminal_name || "").toLowerCase().includes("luxx") ||
+                (c.terminal_name || "").toLowerCase().includes("aval")
+              );
+            }
           }
         } catch (dbErr) {
           console.warn("Error leyendo cajas desde Supabase:", dbErr);
