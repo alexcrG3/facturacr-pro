@@ -7,6 +7,36 @@
 
 ---
 
+### [2026-10-29 09:45] - Implementación de Aceptador Masivo de Gastos ante Hacienda (Mensaje Receptor CCE/CPCE/RCE) en DeclaraHub
+* **Módulos Afectados:**
+  - `src/lib/hacienda/mensaje-receptor.ts` (Nuevo motor de generación y firma XAdES-EPES de Mensaje Receptor)
+  - `src/components/reports/BandejaAceptacionGastosModal.tsx` (Nuevo modal interactivo de confirmación masiva)
+  - `src/components/reports/DeclaraHubSimulator.tsx`
+  - `src/routes/app.reports.tsx`
+* **Incidencia / Necesidad Reportada:**
+  - El usuario solicitó el Punto 1 de la suite premium: **Aceptador Masivo de Gastos ante Hacienda**.
+  - En Costa Rica, según la normativa de la Dirección General de Tributación v4.3/v4.4, para que una factura de compra a proveedor sea legalmente deducible de IVA y de Impuesto sobre la Renta, el contribuyente receptor está obligado a emitir un **Mensaje Receptor (CCE - Comprobante de Confirmación Electrónica, Tipo de Documento 05)** antes de los primeros 8 días hábiles del mes siguiente. Sin este acuse firmado y aceptado por Hacienda, el crédito fiscal no es válido jurídicamente.
+* **Causa Raíz:**
+  - Los sistemas contables tradicionales y los portales gubernamentales (ATV) obligan al contador o usuario a subir cada archivo XML uno a uno de forma tediosa, lo cual desincentiva la confirmación formal de gastos o genera multas y pérdida de crédito fiscal.
+* **Cómo se resolvió:**
+  1. **Motor de Mensaje Receptor (`mensaje-receptor.ts`):**
+     - Construcción del XML oficial según esquema `https://cdn.comprobanteselectronicos.go.cr/xml-schemas/v4.3/mensajeReceptor`.
+     - Generación del consecutivo oficial de 20 dígitos: `00100001050000000001` (Sucursal `001` + Terminal `00001` + Tipo `05/06/07` + Secuencia de 10 dígitos).
+     - Firma digital XAdES-EPES con la llave criptográfica `.p12` de la empresa activa.
+     - Transmisión en lote a la API de Recepción de Hacienda (`/recepcion/v1`).
+  2. **Bandeja de Aceptación Masiva (`BandejaAceptacionGastosModal.tsx`):**
+     - Selección en lote de facturas de compras con checkbox individual o total.
+     - Configuración de la acción: Aceptación Total (CCE 05 - Crédito Pleno), Aceptación Parcial (CPCE 06) o Rechazo (RCE 07).
+     - Selección de condición de impuesto: `01` Crédito IVA total, `02` Crédito parcial, o `04` Gasto sin derecho a crédito.
+     - Barra de progreso interactiva con porcentaje en vivo de firma y transmisión.
+  3. **Integración Directa en DeclaraHub (`DeclaraHubSimulator.tsx` & `app.reports.tsx`):**
+     - Botón `Aceptar Gastos (CCE Masivo)` en la cabecera del simulador D-104 y banner explicativo en la Sección II de Crédito Fiscal.
+     - Botón directo en la barra superior de `/app/reports`.
+     - Actualización automática del estado del comprobante a `Aceptado CCE ✓` en base de datos y memoria.
+* **Prevención:** Toda factura recibida de proveedores debe pasar por la confirmación CCE antes del cierre fiscal mensual para garantizar la legalidad total de las deducciones en el borrador D-104.
+
+---
+
 ### [2026-10-29 09:30] - Lanzamiento de DeclaraHub (Simulador Oficial D-104 & Portal Contable), Sincronización de Consecutivos Caja 1 (Luxx Car Wash) y Blindaje Multi-Tenant de Credenciales de Hacienda
 * **Módulos Afectados:**
   - `src/components/reports/DeclaraHubSimulator.tsx` (Nuevo)

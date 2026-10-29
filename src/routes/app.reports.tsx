@@ -35,6 +35,7 @@ import {
 } from "@/lib/accounting-reports";
 import { ImportXmlModal } from "@/components/reports/ImportXmlModal";
 import { DeclaraHubSimulator } from "@/components/reports/DeclaraHubSimulator";
+import { BandejaAceptacionGastosModal } from "@/components/reports/BandejaAceptacionGastosModal";
 import { formatCRC } from "@/lib/mock-data";
 import { useApp } from "@/contexts/AppContext";
 
@@ -64,6 +65,9 @@ function ReportsPage() {
   // Modal de Importar XML / Expediente
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [importModalMode, setImportModalMode] = useState<"carpeta" | "expediente">("carpeta");
+
+  // Modal de Aceptador Masivo de Gastos ante Hacienda (CCE)
+  const [aceptadorModalOpen, setAceptadorModalOpen] = useState(false);
 
   // Cargar datos
   const refrescarComprobantes = async () => {
@@ -225,6 +229,13 @@ function ReportsPage() {
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
+              onClick={() => setAceptadorModalOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs font-bold text-emerald-600 hover:bg-emerald-500/20 transition-colors"
+            >
+              <ShieldCheck className="h-4 w-4" /> Aceptar Gastos (CCE)
+            </button>
+            <button
+              type="button"
               onClick={() => {
                 setImportModalMode("expediente");
                 setImportModalOpen(true);
@@ -351,6 +362,7 @@ function ReportsPage() {
           periodoDesde={desde}
           periodoHasta={hasta}
           onDescargarExcel={handleDescargarExcel}
+          onAbrirAceptadorGastos={() => setAceptadorModalOpen(true)}
         />
       ) : (
         <>
@@ -633,6 +645,18 @@ function ReportsPage() {
         onClose={() => setImportModalOpen(false)}
         onImportComplete={refrescarComprobantes}
         initialMode={importModalMode}
+      />
+
+      {/* Modal Aceptador Masivo de Gastos ante Hacienda (CCE) */}
+      <BandejaAceptacionGastosModal
+        isOpen={aceptadorModalOpen}
+        onClose={() => setAceptadorModalOpen(false)}
+        compras={filtrados}
+        empresaNombre={activeEstablishment?.name || "Empresa Actual"}
+        empresaCedula={activeEstablishment?.legal_id || "3101483899"}
+        onCompletado={() => {
+          refrescarComprobantes();
+        }}
       />
     </div>
   );

@@ -25,6 +25,7 @@ interface DeclaraHubSimulatorProps {
   periodoDesde: string;
   periodoHasta: string;
   onDescargarExcel: () => void;
+  onAbrirAceptadorGastos?: () => void;
 }
 
 export function DeclaraHubSimulator({
@@ -34,6 +35,7 @@ export function DeclaraHubSimulator({
   periodoDesde,
   periodoHasta,
   onDescargarExcel,
+  onAbrirAceptadorGastos,
 }: DeclaraHubSimulatorProps) {
   const [copiedCasilla, setCopiedCasilla] = useState<string | null>(null);
 
@@ -187,6 +189,18 @@ Generado automáticamente por FacturaOS DeclaraHub.`;
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5">
+            {onAbrirAceptadorGastos && (
+              <button
+                type="button"
+                onClick={onAbrirAceptadorGastos}
+                className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white shadow-md hover:bg-emerald-700 transition-all cursor-pointer hover:scale-[1.02]"
+              >
+                <ShieldCheck className="h-4 w-4" /> Aceptar Gastos (CCE Masivo)
+                <span className="rounded-full bg-white/20 px-1.5 py-0.5 text-[10px] font-black uppercase">
+                  Doc. 05
+                </span>
+              </button>
+            )}
             <button
               type="button"
               onClick={handleCopyResumenContador}
@@ -393,6 +407,25 @@ Generado automáticamente por FacturaOS DeclaraHub.`;
               {metricasD104.cantidadCompras} soportadas
             </span>
           </div>
+
+          {/* Banner de Validación CCE ante Hacienda */}
+          {onAbrirAceptadorGastos && (
+            <div className="flex flex-wrap items-center justify-between gap-2.5 rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-3 text-xs">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="h-4 w-4 text-emerald-600 shrink-0" />
+                <span className="text-[11px] text-muted-foreground">
+                  Para deducir este crédito fiscal, Hacienda exige la emisión del <strong>Mensaje Receptor (CCE)</strong>.
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={onAbrirAceptadorGastos}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-emerald-700 transition-colors cursor-pointer"
+              >
+                Aceptar Facturas de Gastos (CCE) →
+              </button>
+            </div>
+          )}
 
           <div className="space-y-3">
             {/* Casilla 121: Compras Gravadas 13% */}
