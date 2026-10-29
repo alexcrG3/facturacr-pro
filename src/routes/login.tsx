@@ -1,17 +1,42 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState, useEffect, type FormEvent } from "react";
-import { Mail, Lock, ArrowRight, ShieldCheck, Sparkles, Zap, Eye, EyeOff, User, Loader2 } from "lucide-react";
+import {
+  Mail,
+  Lock,
+  ArrowRight,
+  ShieldCheck,
+  Sparkles,
+  Zap,
+  Eye,
+  EyeOff,
+  User,
+  Loader2,
+  Building2,
+  CheckCircle2,
+  AlertCircle,
+  RefreshCw,
+} from "lucide-react";
 import { Logo, LogoIcon, FacturaOSSplashLoader } from "@/components/layout/Logo";
 import { supabase, type Role } from "@/lib/supabase";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/login")({
+  validateSearch: (search: Record<string, unknown>) => ({
+    mode: (search.mode as "login" | "register") || undefined,
+    cedula: (search.cedula as string) || undefined,
+    empresa: (search.empresa as string) || undefined,
+    code: (search.code as string) || undefined,
+  }),
   component: LoginPage,
 });
 
 function LoginPage() {
   const navigate = useNavigate();
-  const [mode, setMode] = useState<"login" | "register">("login");
+  const search = Route.useSearch();
+
+  const [mode, setMode] = useState<"login" | "register">(
+    search?.mode === "register" || search?.cedula ? "register" : "login"
+  );
   const [loading, setLoading] = useState(false);
   const [checkingSession, setCheckingSession] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
@@ -20,6 +45,51 @@ function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
+
+  // Campos específicos de Registro del Dueño de la Empresa
+  const [cedula, setCedula] = useState(search?.cedula || "");
+  const [companyLegalName, setCompanyLegalName] = useState(search?.empresa || "");
+  const [validatingCedula, setValidatingCedula] = useState(false);
+  const [cedulaValidation, setCedulaValidation] = useState<any | null>(null);
+
+  // Validación de Cédula de la Empresa ante el Padrón Oficial de Hacienda
+  const validateCedulaHacienda = async (idNum: string) => {
+    const clean = idNum.replace(/\D/g, "");
+    if (clean.length < 9) {
+      setCedulaValidation(null);
+      return;
+    }
+    setValidatingCedula(true);
+    try {
+      const res = await fetch(`/api/v1/identities/${clean}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.nombreCompleto) {
+          setCedulaValidation(data);
+          if (!companyLegalName) {
+            setCompanyLegalName(data.nombreCompleto);
+          }
+        } else {
+          setCedulaValidation(null);
+        }
+      } else {
+        setCedulaValidation(null);
+      }
+    } catch (err) {
+      console.warn("Validación de cédula en Hacienda:", err);
+      setCedulaValidation(null);
+    } finally {
+      setValidatingCedula(false);
+    }
+  };
+
+  useEffect(() => {
+    if (search?.cedula) {
+      setCedula(search.cedula);
+      setMode("register");
+      validateCedulaHacienda(search.cedula);
+    }
+  }, [search?.cedula]);
 
   // Resolver el destino y establecimiento del usuario según su rol y correo
   const resolveDestinationAndEstablishment = async (userObj: { id: string; email?: string }) => {
@@ -145,64 +215,127 @@ function LoginPage() {
 
   const handleRegister = async (e: FormEvent) => {
     e.preventDefault();
+    if (!cedula.trim()) {
+      toast.error("Por favor ingresa la cédula jurídica o física de tu empresa");
+      return;
+    }
     if (!fullName.trim()) {
-      toast.error("Por favor ingresa tu nombre completo");
+      toast.error("Por favor ingresa tu nombre como dueño o representante");
       return;
     }
     if (!email.trim() || !password.trim()) {
-      toast.error("Por favor completa el correo y la contraseña");
+      toast.error("Por favor completa tu correo y crea tu contraseña");
       return;
     }
     if (password.length < 6) {
-      toast.error("La contraseña debe tener al menos 6 caracteres");
+      toast.error("Tu contraseña debe tener al menos 6 caracteres");
       return;
     }
 
     setLoading(true);
     try {
-      // El rol se gestiona internamente:
-      // Si es el primer usuario que se registra en la plataforma, será Administrador.
-      // De lo contrario se asigna rol inicial 'vendedor' para que el Administrador lo configure internamente.
-      const { count } = await supabase.from("profiles").select("*", { count: "exact", head: true });
-      const initialRole: Role = (count === 0 || count === null) ? "admin" : "vendedor";
+      const cleanCedula = cedula.replace(/\D/g, "");
+      const resolvedCompanyName =
+        companyLegalName.trim() ||
+        cedulaValidation?.nombreCompleto ||
+        `Empresa ${cleanCedula}`;
+      const activityCode =
+        cedulaValidation?.actividadesEconomicas?.[0]?.codigo?.replace(/\D/g, "") || "620901";
 
-      const { data, error } = await supabase.auth.signUp({
-        email: email.trim(),
+      // 1. Buscar si esta empresa ya existe en establishments
+      const { data: existingEsts } = await supabase
+        .from("establishments")
+        .select("*")
+        .or(`legal_id.eq.${cleanCedula},legal_id.eq.${cedula.trim()}`);
+
+      let targetEst = existingEsts && existingEsts.length > 0 ? existingEsts[0] : null;
+
+      // 2. Si no existe aún en la base de datos, crearla automáticamente con los datos verificados
+      if (!targetEst) {
+        const codeSlug = resolvedCompanyName
+          .toLowerCase()
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .replace(/[^a-z0-9]/g, "_")
+          .slice(0, 20);
+        const uniqueCode = `${codeSlug}_${Math.random().toString(36).substring(2, 6)}`;
+        const apiKeySecret = `fct_live_${codeSlug}_${Math.random().toString(36).substring(2, 10)}${Math.random().toString(36).substring(2, 10)}`;
+
+        const { data: newEst, error: estErr } = await supabase
+          .from("establishments")
+          .insert({
+            name: resolvedCompanyName,
+            legal_id: cleanCedula,
+            legal_id_type: cleanCedula.length === 10 ? "02" : cleanCedula.length === 9 ? "01" : "03",
+            economic_activity_code: activityCode,
+            code: uniqueCode,
+            email: email.trim().toLowerCase(),
+            is_active: true,
+            atv_environment: "staging",
+          })
+          .select()
+          .single();
+
+        if (estErr) throw estErr;
+        targetEst = newEst;
+
+        // Crear API Key para la nueva empresa
+        await supabase.from("api_keys").insert({
+          establishment_id: newEst.id,
+          app_name: resolvedCompanyName,
+          key_prefix: apiKeySecret.slice(0, 12),
+          key_secret: apiKeySecret,
+          environment: "staging",
+          is_active: true,
+        });
+      }
+
+      // 3. Crear el usuario en Supabase Auth con su contraseña personal y metadata de empresa
+      const { data: authData, error: authErr } = await supabase.auth.signUp({
+        email: email.trim().toLowerCase(),
         password: password.trim(),
         options: {
           data: {
             full_name: fullName.trim(),
-            role: initialRole,
+            role: "admin", // Dueño de la empresa
+            establishment_id: targetEst.id,
+            establishment_code: targetEst.code,
+            establishment_name: targetEst.name,
+            allowed_establishment_ids: [targetEst.id],
           },
         },
       });
 
-      if (error) {
-        toast.error(error.message);
-        return;
-      }
+      if (authErr) throw authErr;
 
-      if (data.user) {
-        // Guardar perfil en la tabla profiles
+      if (authData.user) {
+        // 4. Guardar en profiles
         await supabase.from("profiles").upsert({
-          id: data.user.id,
-          email: data.user.email,
+          id: authData.user.id,
+          email: email.trim().toLowerCase(),
           full_name: fullName.trim(),
-          role: initialRole,
+          role: "admin",
+          establishment_id: targetEst.id,
         });
 
-        if (data.session) {
-          toast.success("¡Cuenta creada exitosamente!");
+        // 5. Establecer empresa activa en sesión
+        if (typeof window !== "undefined") {
+          localStorage.setItem("facturaos_active_est_id", targetEst.id);
+        }
+
+        if (authData.session) {
+          toast.success(`¡Bienvenido a FacturaOS! Tu empresa "${targetEst.name}" ha sido activada.`);
           navigate({ to: "/app/dashboard" });
         } else {
-          toast.success("¡Cuenta registrada con éxito! Ya puedes iniciar sesión.", {
-            duration: 5000,
+          toast.success("¡Cuenta activada con éxito! Ya puedes iniciar sesión con tu nueva contraseña.", {
+            duration: 6000,
           });
           setMode("login");
         }
       }
     } catch (err: any) {
-      toast.error(err?.message || "Ocurrió un error al registrar la cuenta");
+      console.error("Error en registro:", err);
+      toast.error(err.message || "Ocurrió un error al registrar la cuenta");
     } finally {
       setLoading(false);
     }
@@ -229,12 +362,12 @@ function LoginPage() {
           </div>
 
           <h1 className="mt-4 text-2xl font-bold tracking-tight md:text-3xl text-foreground">
-            {mode === "login" ? "Iniciar Sesión" : "Crear Cuenta"}
+            {mode === "login" ? "Iniciar Sesión" : "Activar Empresa / Registro"}
           </h1>
           <p className="mt-1.5 text-xs text-muted-foreground">
             {mode === "login"
               ? "Ingresa a tu cuenta para gestionar tu facturación electrónica."
-              : "Crea tu cuenta para acceder a la plataforma."}
+              : "Verifica la cédula jurídica de tu empresa y crea tu contraseña segura."}
           </p>
 
           {/* Toggle Modo */}
@@ -265,29 +398,90 @@ function LoginPage() {
 
           <form onSubmit={mode === "login" ? handleLogin : handleRegister} className="mt-5 space-y-3.5">
             {mode === "register" && (
-              <div>
-                <label className="mb-1 block text-xs font-medium">Nombre completo</label>
-                <div className="relative">
-                  <User className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  <input
-                    type="text"
-                    placeholder="Alex García"
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    className="h-10 w-full rounded-lg border border-border bg-card pl-9 pr-3 text-xs focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/20"
-                    required
-                  />
+              <>
+                {/* 1. Cédula Tributaria de la Empresa */}
+                <div>
+                  <div className="mb-1 flex items-center justify-between">
+                    <label className="block text-xs font-semibold text-foreground">
+                      Cédula de la Empresa / Sociedad *
+                    </label>
+                    <span className="text-[10px] text-muted-foreground">Jurídica o Física</span>
+                  </div>
+                  <div className="relative">
+                    <Building2 className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <input
+                      type="text"
+                      placeholder="Ej. 3102832920 ó 3-101-443322"
+                      value={cedula}
+                      onChange={(e) => {
+                        setCedula(e.target.value);
+                        if (e.target.value.replace(/\D/g, "").length >= 9) {
+                          validateCedulaHacienda(e.target.value);
+                        }
+                      }}
+                      onBlur={() => validateCedulaHacienda(cedula)}
+                      className="h-10 w-full rounded-lg border border-border bg-card pl-9 pr-20 font-mono text-xs focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/20"
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => validateCedulaHacienda(cedula)}
+                      disabled={validatingCedula || !cedula.trim()}
+                      className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded bg-primary/10 hover:bg-primary/20 px-2 py-1 text-[11px] font-bold text-primary transition-all disabled:opacity-50 cursor-pointer"
+                    >
+                      {validatingCedula ? <Loader2 className="h-3 w-3 animate-spin" /> : "Verificar"}
+                    </button>
+                  </div>
+
+                  {/* Badge de Verificación ante Hacienda */}
+                  {cedulaValidation && (
+                    <div className="mt-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-2.5 text-[11px] text-emerald-800 dark:text-emerald-300 space-y-1">
+                      <div className="flex items-center gap-1.5 font-bold">
+                        <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                        <span>Verificado en Ministerio de Hacienda</span>
+                      </div>
+                      <p className="font-semibold text-foreground truncate">
+                        {cedulaValidation.nombreCompleto}
+                      </p>
+                      {cedulaValidation.actividadesEconomicas?.[0] && (
+                        <p className="text-[10px] text-muted-foreground truncate">
+                          Actividad: {cedulaValidation.actividadesEconomicas[0].codigo} — {cedulaValidation.actividadesEconomicas[0].descripcion}
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
-              </div>
+
+                {/* 2. Nombre del Dueño / Representante */}
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-foreground">
+                    Nombre del Dueño o Representante Legal *
+                  </label>
+                  <div className="relative">
+                    <User className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <input
+                      type="text"
+                      placeholder="Ej. Alexander Gutiérrez"
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
+                      className="h-10 w-full rounded-lg border border-border bg-card pl-9 pr-3 text-xs focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/20"
+                      required
+                    />
+                  </div>
+                </div>
+              </>
             )}
 
+            {/* 3. Correo Electrónico */}
             <div>
-              <label className="mb-1 block text-xs font-medium">Correo electrónico</label>
+              <label className="mb-1 block text-xs font-semibold text-foreground">
+                Correo Electrónico de Acceso *
+              </label>
               <div className="relative">
                 <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <input
                   type="email"
-                  placeholder="correo electrónico"
+                  placeholder="facturas@grupoluxxcr.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="h-10 w-full rounded-lg border border-border bg-card pl-9 pr-3 text-xs focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/20"
@@ -296,9 +490,12 @@ function LoginPage() {
               </div>
             </div>
 
+            {/* 4. Contraseña creada por el Dueño */}
             <div>
               <div className="mb-1 flex items-center justify-between">
-                <label className="block text-xs font-medium">Contraseña</label>
+                <label className="block text-xs font-semibold text-foreground">
+                  {mode === "register" ? "Crea tu Contraseña Secreta *" : "Contraseña *"}
+                </label>
                 {mode === "login" && (
                   <Link to="/forgot-password" className="text-[11px] text-primary hover:underline">
                     ¿Olvidaste tu contraseña?
@@ -309,10 +506,10 @@ function LoginPage() {
                 <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <input
                   type={showPassword ? "text" : "password"}
-                  placeholder="••••••••"
+                  placeholder={mode === "register" ? "Mínimo 6 caracteres" : "••••••••"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="h-10 w-full rounded-lg border border-border bg-card pl-9 pr-10 text-xs focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/20"
+                  className="h-10 w-full rounded-lg border border-border bg-card pl-9 pr-10 text-xs focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/20 font-mono"
                   required
                 />
                 <button
@@ -324,12 +521,17 @@ function LoginPage() {
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
+              {mode === "register" && (
+                <p className="mt-1 text-[10px] text-muted-foreground">
+                  Esta contraseña es confidencial y solo tú tendrás acceso a ella.
+                </p>
+              )}
             </div>
 
             <button
               type="submit"
               disabled={loading}
-              className="group inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-primary text-xs font-semibold text-primary-foreground shadow-soft transition-all hover:shadow-glow disabled:opacity-60"
+              className="group inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-primary text-xs font-semibold text-primary-foreground shadow-soft transition-all hover:shadow-glow disabled:opacity-60 cursor-pointer"
             >
               {loading ? (
                 <>
@@ -343,7 +545,7 @@ function LoginPage() {
                 </>
               ) : (
                 <>
-                  <span>Crear Cuenta y Entrar</span>
+                  <span>Activar Mi Empresa y Entrar</span>
                   <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
                 </>
               )}

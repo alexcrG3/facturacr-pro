@@ -69,15 +69,10 @@ function CommandCenterStandalone() {
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
 
-  // Modal para crear acceso / usuario independiente por empresa
-  const [showUserModal, setShowUserModal] = useState(false);
-  const [targetEstForUser, setTargetEstForUser] = useState<any | null>(null);
-  const [newUserName, setNewUserName] = useState("");
-  const [newUserEmail, setNewUserEmail] = useState("");
-  const [newUserPassword, setNewUserPassword] = useState("");
-  const [newUserRole, setNewUserRole] = useState<Role>("admin");
-  const [showPasswordToggle, setShowPasswordToggle] = useState(false);
-  const [creatingUser, setCreatingUser] = useState(false);
+  // Modal para invitar al dueño / auto-registro con validación de Hacienda
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [targetEstForInvite, setTargetEstForInvite] = useState<any | null>(null);
+  const [inviteCopied, setInviteCopied] = useState(false);
 
   // Modal para editar empresa (CRUD - Update)
   const [showEditModal, setShowEditModal] = useState(false);
@@ -654,102 +649,33 @@ function CommandCenterStandalone() {
     }
   };
 
-  const handleOpenCreateUserModal = (est: any) => {
-    setTargetEstForUser(est);
-    setNewUserName(`Cajero / Operador`);
-    setNewUserEmail(est.email || "");
-    setNewUserPassword("");
-    setNewUserRole("admin");
-    setShowPasswordToggle(false);
-    setShowUserModal(true);
+  const handleOpenInviteModal = (est: any) => {
+    setTargetEstForInvite(est);
+    setInviteCopied(false);
+    setShowInviteModal(true);
   };
 
-  const handleCreateUserForEstablishment = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!targetEstForUser) return;
-    if (!newUserEmail.trim() || !newUserPassword.trim()) {
-      toast.error("Por favor completa el correo y la contraseña");
-      return;
-    }
-    if (newUserPassword.length < 6) {
-      toast.error("La contraseña debe tener al menos 6 caracteres");
-      return;
-    }
+  const getInviteUrl = (est: any) => {
+    if (!est) return "";
+    const origin = typeof window !== "undefined" ? window.location.origin : "";
+    return `${origin}/login?mode=register&cedula=${est.legal_id}&empresa=${encodeURIComponent(est.app_name || est.name)}`;
+  };
 
-    setCreatingUser(true);
-    try {
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
-      const supabaseAnonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string;
+  const getWhatsappInviteLink = (est: any) => {
+    if (!est) return "";
+    const url = getInviteUrl(est);
+    const companyName = est.app_name || est.name;
+    const msg = `¡Hola! Te invitamos a activar tu portal de facturación electrónica en FacturaOS para *${companyName}* (Cédula: ${est.legal_id}).\n\nIngresa al siguiente enlace oficial para verificar tu sociedad ante el Ministerio de Hacienda y crear tu contraseña personal de acceso:\n${url}\n\n¡Bienvenido a FacturaOS!`;
+    return `https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`;
+  };
 
-      // Usar cliente aislado para NO cerrar ni sobreescribir la sesión activa del Super Admin
-      const isolatedAuthClient = createClient(supabaseUrl, supabaseAnonKey, {
-        auth: {
-          persistSession: false,
-          autoRefreshToken: false,
-          detectSessionInUrl: false,
-        },
-      });
-
-      const cleanEmail = newUserEmail.trim().toLowerCase();
-      const cleanName = newUserName.trim() || targetEstForUser.name;
-
-      // 1. Crear usuario en Supabase Auth con metadata amarrada al establecimiento
-      const { data: authData, error: authErr } = await isolatedAuthClient.auth.signUp({
-        email: cleanEmail,
-        password: newUserPassword.trim(),
-        options: {
-          data: {
-            full_name: cleanName,
-            role: newUserRole,
-            establishment_id: targetEstForUser.id,
-            establishment_code: targetEstForUser.code,
-            establishment_name: targetEstForUser.name,
-          },
-        },
-      });
-
-      if (authErr) {
-        if (authErr.message.includes("already registered") || authErr.message.includes("User already registered")) {
-          toast.error("Este correo ya está registrado en el sistema. Puedes usar otro correo o reasignarlo.");
-        } else {
-          toast.error(`Error al registrar usuario: ${authErr.message}`);
-        }
-        return;
-      }
-
-      const newUserId = authData.user?.id;
-
-      // 2. Crear o actualizar registro en la tabla profiles
-      if (newUserId) {
-        const { error: profErr } = await supabase.from("profiles").upsert({
-          id: newUserId,
-          email: cleanEmail,
-          full_name: cleanName,
-          role: newUserRole,
-        });
-        if (profErr) {
-          console.warn("Advertencia en profiles upsert:", profErr);
-        }
-      }
-
-      // 3. Sincronizar el email en la tabla establishments si estaba vacío o cambió
-      if (cleanEmail !== targetEstForUser.email?.toLowerCase()) {
-        await supabase
-          .from("establishments")
-          .update({ email: cleanEmail })
-          .eq("id", targetEstForUser.id);
-      }
-
-      toast.success(
-        `¡Acceso creado con éxito para "${targetEstForUser.app_name || targetEstForUser.name}"! Ahora puede ingresar en /login con ${cleanEmail}.`
-      );
-      setShowUserModal(false);
-      await loadData();
-    } catch (err: any) {
-      console.error("Error al crear credenciales de empresa:", err);
-      toast.error(err?.message || "Ocurrió un error al crear el acceso");
-    } finally {
-      setCreatingUser(false);
+  const handleCopyInviteLink = (est: any) => {
+    const url = getInviteUrl(est);
+    if (navigator?.clipboard) {
+      navigator.clipboard.writeText(url);
+      setInviteCopied(true);
+      toast.success("¡Enlace de activación copiado al portapapeles!");
+      setTimeout(() => setInviteCopied(false), 3000);
     }
   };
 
@@ -1006,18 +932,18 @@ function CommandCenterStandalone() {
                         <span>{est.is_active !== false ? "ACTIVO" : "INACTIVO"}</span>
                       </button>
 
-                      {/* Botón Crear Acceso */}
+                      {/* Botón Invitar al Dueño */}
                       <button
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          handleOpenCreateUserModal(est);
+                          handleOpenInviteModal(est);
                         }}
                         className="inline-flex items-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-3 py-2 text-xs font-bold transition-all cursor-pointer shadow-xs hover:border-indigo-300"
-                        title={`Crear usuario independiente para ${est.app_name || est.name}`}
+                        title={`Generar enlace de activación para el dueño de ${est.app_name || est.name}`}
                       >
                         <UserPlus className="h-3.5 w-3.5" />
-                        <span>+ Crear Acceso</span>
+                        <span>Invitar al Dueño</span>
                       </button>
 
                       {/* Botón Editar Empresa (CRUD Update) */}
@@ -1190,8 +1116,8 @@ function CommandCenterStandalone() {
         </div>
       )}
 
-      {/* ─── MODAL CREAR ACCESO / USUARIO INDEPENDIENTE ───────────────────── */}
-      {showUserModal && targetEstForUser && (
+      {/* ─── MODAL INVITAR AL DUEÑO / ACTIVAR EMPRESA ───────────────────────── */}
+      {showInviteModal && targetEstForInvite && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs">
           <div className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
@@ -1200,15 +1126,15 @@ function CommandCenterStandalone() {
                   <UserPlus className="h-5 w-5" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-slate-900">Crear Acceso / Usuario</h3>
+                  <h3 className="font-bold text-slate-900">Invitar al Dueño / Activar Empresa</h3>
                   <p className="text-xs text-slate-500">
-                    Credenciales independientes vinculadas exclusivamente a esta empresa.
+                    Enlace oficial de auto-registro con validación de Hacienda.
                   </p>
                 </div>
               </div>
               <button
                 type="button"
-                onClick={() => setShowUserModal(false)}
+                onClick={() => setShowInviteModal(false)}
                 className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 cursor-pointer"
               >
                 <X className="h-5 w-5" />
@@ -1216,111 +1142,94 @@ function CommandCenterStandalone() {
             </div>
 
             {/* Target Establishment info badge */}
-            <div className="rounded-2xl border border-indigo-100 bg-indigo-50/50 p-3 flex items-center justify-between gap-3">
+            <div className="rounded-2xl border border-indigo-100 bg-indigo-50/50 p-4 flex items-center justify-between gap-3">
               <div className="min-w-0">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-indigo-500">Empresa Asignada</p>
-                <p className="text-xs font-bold text-slate-900 truncate">
-                  {targetEstForUser.app_name || targetEstForUser.name}
+                <p className="text-[10px] font-bold uppercase tracking-wider text-indigo-500">Sociedad / Empresa</p>
+                <p className="text-sm font-bold text-slate-900 truncate">
+                  {targetEstForInvite.app_name || targetEstForInvite.name}
                 </p>
-                <p className="text-[11px] text-slate-500">
-                  Cédula: {targetEstForUser.legal_id} • Código: {targetEstForUser.code || "0001"}
+                <p className="text-xs text-slate-600 font-mono mt-0.5">
+                  Cédula: <strong>{targetEstForInvite.legal_id}</strong> • Cód: {targetEstForInvite.code || "0001"}
                 </p>
               </div>
-              <span className="shrink-0 rounded-full bg-indigo-600 text-white px-2.5 py-1 text-[10px] font-bold uppercase">
-                Aislado 100%
+              <span className="shrink-0 rounded-full bg-emerald-600 text-white px-3 py-1 text-[10px] font-bold uppercase flex items-center gap-1 shadow-xs">
+                <CheckCircle2 className="h-3 w-3" />
+                Hacienda RUT
               </span>
             </div>
 
-            <form onSubmit={handleCreateUserForEstablishment} className="space-y-4 text-xs">
-              <div className="space-y-1">
-                <label className="font-semibold text-slate-700">Nombre del Encargado o Puesto *</label>
-                <input
-                  required
-                  placeholder="Ej: Cajero BarberApp, Dr. Rodríguez, Despachador..."
-                  value={newUserName}
-                  onChange={(e) => setNewUserName(e.target.value)}
-                  className="h-10 w-full rounded-xl border border-slate-200 px-3 text-xs focus:border-indigo-600 focus:outline-none"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="font-semibold text-slate-700">Correo Electrónico de Ingreso *</label>
-                <input
-                  type="email"
-                  required
-                  placeholder="ej: barberia@gmail.com o cajero@empresa.cr"
-                  value={newUserEmail}
-                  onChange={(e) => setNewUserEmail(e.target.value)}
-                  className="h-10 w-full rounded-xl border border-slate-200 px-3 text-xs focus:border-indigo-600 focus:outline-none"
-                />
-                <p className="text-[11px] text-slate-400">
-                  El usuario colocará este correo en la pantalla de inicio de sesión (/login).
-                </p>
-              </div>
-
-              <div className="space-y-1">
-                <label className="font-semibold text-slate-700">Contraseña de Acceso *</label>
-                <div className="relative">
+            <div className="space-y-3 text-xs">
+              <div className="space-y-1.5">
+                <label className="font-semibold text-slate-700">Enlace Oficial de Activación y Registro:</label>
+                <div className="flex items-center gap-2">
                   <input
-                    type={showPasswordToggle ? "text" : "password"}
-                    required
-                    minLength={6}
-                    placeholder="Mínimo 6 caracteres"
-                    value={newUserPassword}
-                    onChange={(e) => setNewUserPassword(e.target.value)}
-                    className="h-10 w-full rounded-xl border border-slate-200 pl-3 pr-10 text-xs focus:border-indigo-600 focus:outline-none"
+                    type="text"
+                    readOnly
+                    value={getInviteUrl(targetEstForInvite)}
+                    className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-xs font-mono text-slate-700 select-all focus:outline-none"
                   />
                   <button
                     type="button"
-                    onClick={() => setShowPasswordToggle(!showPasswordToggle)}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+                    onClick={() => handleCopyInviteLink(targetEstForInvite)}
+                    className="shrink-0 inline-flex items-center gap-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white px-3.5 h-10 font-bold transition-all shadow-xs cursor-pointer"
+                    title="Copiar enlace"
                   >
-                    {showPasswordToggle ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    {inviteCopied ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
+                    <span>{inviteCopied ? "¡Copiado!" : "Copiar"}</span>
                   </button>
                 </div>
-              </div>
-
-              <div className="space-y-1">
-                <label className="font-semibold text-slate-700">Rol Asignado en la Empresa</label>
-                <select
-                  value={newUserRole}
-                  onChange={(e) => setNewUserRole(e.target.value as Role)}
-                  className="h-10 w-full rounded-xl border border-slate-200 px-2 text-xs bg-white focus:border-indigo-600 focus:outline-none"
-                >
-                  <option value="admin">Administrador de Empresa (Facturación, Clientes, Reportes, Catálogo)</option>
-                  <option value="cajero">Cajero / Facturador (Emisión de Facturas y Tiquetes)</option>
-                  <option value="vendedor">Vendedor (Emisión de Comprobantes)</option>
-                </select>
-              </div>
-
-              <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-3 text-[11px] text-emerald-800 space-y-1">
-                <div className="font-bold flex items-center gap-1.5">
-                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                  <span>Sin mezclas ni preguntas</span>
-                </div>
-                <p className="text-emerald-700 leading-relaxed">
-                  Al guardar, este usuario podrá ingresar en <strong>/login</strong> e irá directo y exclusivamente a <strong>{targetEstForUser.app_name || targetEstForUser.name}</strong>. Cero dropdowns y total discreción fiscal.
+                <p className="text-[11px] text-slate-400">
+                  El cliente abrirá este link, el sistema verificará su cédula ante Hacienda y él mismo creará su contraseña secreta.
                 </p>
               </div>
 
-              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setShowUserModal(false)}
-                  className="rounded-xl border border-slate-200 px-4 py-2.5 font-semibold text-slate-600 hover:bg-slate-50 cursor-pointer"
+              {/* Botón WhatsApp */}
+              <div className="pt-2">
+                <a
+                  href={getWhatsappInviteLink(targetEstForInvite)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-3 text-xs font-bold shadow-md shadow-emerald-600/20 transition-all cursor-pointer"
                 >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={creatingUser}
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 font-bold shadow-md shadow-indigo-600/25 cursor-pointer disabled:opacity-50"
-                >
-                  {creatingUser ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />}
-                  Guardar y Crear Acceso
-                </button>
+                  <ExternalLink className="h-4 w-4" />
+                  <span>Enviar Invitación por WhatsApp al Dueño</span>
+                </a>
               </div>
-            </form>
+
+              {/* Botón Abrir en pestaña */}
+              <button
+                type="button"
+                onClick={() => {
+                  if (typeof window !== "undefined") {
+                    window.open(getInviteUrl(targetEstForInvite), "_blank");
+                  }
+                }}
+                className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 px-4 py-2.5 text-xs font-semibold transition-all cursor-pointer shadow-xs"
+              >
+                <ExternalLink className="h-3.5 w-3.5 text-slate-400" />
+                <span>Abrir Registro en Nueva Pestaña (Si el dueño está contigo)</span>
+              </button>
+
+              <div className="rounded-xl border border-indigo-200 bg-indigo-50/60 p-3 text-[11px] text-indigo-900 space-y-1">
+                <div className="font-bold flex items-center gap-1.5">
+                  <ShieldCheck className="h-3.5 w-3.5 text-indigo-600 shrink-0" />
+                  <span>100% Profesional y Privado</span>
+                </div>
+                <p className="text-indigo-800 leading-relaxed">
+                  El dueño de la empresa colocará su propia clave secreta directamente en Supabase Auth. Tú como SuperAdmin nunca tendrás que solicitarle ni manipular contraseñas ajenas.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setShowInviteModal(false)}
+                className="rounded-xl border border-slate-200 px-4 py-2 font-semibold text-slate-600 hover:bg-slate-50 cursor-pointer text-xs"
+              >
+                Cerrar
+              </button>
+            </div>
           </div>
         </div>
       )}
