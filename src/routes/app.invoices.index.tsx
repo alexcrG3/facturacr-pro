@@ -382,6 +382,19 @@ function InvoicesPage() {
                             Completar
                           </Link>
                         )}
+                        {(inv.clave || inv.haciendaKey) && (
+                          <a
+                            href={`/api/v1/invoices/${inv.clave || inv.haciendaKey}/pdf`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="inline-flex items-center gap-1 rounded-md bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 px-2.5 py-1 text-xs font-semibold transition-colors shadow-xs"
+                            title="Ver / Imprimir Factura o Tiquete en PDF Oficial con QR"
+                          >
+                            <Eye className="h-3.5 w-3.5" />
+                            Ver PDF
+                          </a>
+                        )}
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
@@ -396,7 +409,7 @@ function InvoicesPage() {
                           className="inline-flex items-center gap-1 rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium hover:bg-muted text-foreground transition-colors"
                           title="Ver Expediente Fiscal (Resumen, Diagnóstico Hacienda, Archivos XML/PDF)"
                         >
-                          <FileText className="h-3.5 w-3.5 text-primary" />
+                          <FileText className="h-3.5 w-3.5 text-muted-foreground" />
                           Expediente
                         </button>
                       </div>

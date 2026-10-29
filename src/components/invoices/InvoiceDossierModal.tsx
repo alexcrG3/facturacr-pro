@@ -445,6 +445,17 @@ export function InvoiceDossierModal({
             >
               <Archive className="h-3.5 w-3.5 text-primary" /> Descargar Paquete (.zip)
             </button>
+            {clave && (
+              <a
+                href={`/api/v1/invoices/${clave}/pdf`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-primary text-primary-foreground px-3 py-1.5 text-xs font-semibold hover:bg-primary/90 transition-colors shadow-xs"
+                title="Ver e imprimir PDF oficial en pestaña nueva"
+              >
+                <Eye className="h-3.5 w-3.5" /> Ver PDF Oficial
+              </a>
+            )}
             <button
               onClick={onClose}
               className="rounded-lg p-2 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
