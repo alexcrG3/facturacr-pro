@@ -34,6 +34,7 @@ import {
   ComprobanteContable,
 } from "@/lib/accounting-reports";
 import { ImportXmlModal } from "@/components/reports/ImportXmlModal";
+import { DeclaraHubSimulator } from "@/components/reports/DeclaraHubSimulator";
 import { formatCRC } from "@/lib/mock-data";
 import { useApp } from "@/contexts/AppContext";
 
@@ -54,6 +55,7 @@ function ReportsPage() {
 
   const [desde, setDesde] = useState(firstDayThisMonth);
   const [hasta, setHasta] = useState(lastDayThisMonth);
+  const [vistaActiva, setVistaActiva] = useState<"declarahub" | "libro">("declarahub");
   const [tipoReporte, setTipoReporte] = useState<TipoReporteId>("DETALLADO_COMPROBANTES");
   const [comprobantes, setComprobantes] = useState<ComprobanteContable[]>([]);
   const [searchFilter, setSearchFilter] = useState("");
@@ -217,8 +219,8 @@ function ReportsPage() {
     <div className="mx-auto max-w-7xl space-y-6 pb-12">
       {/* Header */}
       <PageHeader
-        title="Reportes para el contador"
-        description="Generación de informes contables en Excel, conciliación de comprobantes y cálculo de IVA para la Declaración D-104."
+        title="DeclaraHub — Contabilidad y D-104"
+        description="Portal oficial de conciliación contable, borrador de declaración mensual D-104 de Hacienda CR y reportes en Excel."
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <button
@@ -252,134 +254,149 @@ function ReportsPage() {
         }
       />
 
-      {/* Panel Principal de Filtros (Exacto a la captura del usuario) */}
-      <div className="rounded-2xl border border-border bg-card p-6 shadow-soft space-y-5">
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {/* Desde */}
-          <div>
-            <label className="mb-1.5 block text-xs font-semibold text-muted-foreground">Desde</label>
-            <div className="relative">
-              <input
-                type="date"
-                value={desde}
-                onChange={(e) => setDesde(e.target.value)}
-                className="h-10 w-full rounded-xl border border-border bg-background px-3 text-xs font-mono font-medium focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/20"
-              />
-            </div>
-          </div>
+      {/* Tabs Selector: DeclaraHub vs Libro de Comprobantes */}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-3">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setVistaActiva("declarahub")}
+            className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+              vistaActiva === "declarahub"
+                ? "bg-primary text-primary-foreground shadow-soft"
+                : "bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground"
+            }`}
+          >
+            <Sparkles className="h-4 w-4" />
+            DeclaraHub (Borrador D-104)
+            <span className="rounded-full bg-emerald-500/20 text-emerald-400 px-2 py-0.5 text-[10px] font-extrabold uppercase">
+              Hacienda CR
+            </span>
+          </button>
 
-          {/* Hasta */}
-          <div>
-            <label className="mb-1.5 block text-xs font-semibold text-muted-foreground">Hasta</label>
-            <div className="relative">
-              <input
-                type="date"
-                value={hasta}
-                onChange={(e) => setHasta(e.target.value)}
-                className="h-10 w-full rounded-xl border border-border bg-background px-3 text-xs font-mono font-medium focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/20"
-              />
-            </div>
-          </div>
-
-          {/* Tipo de reporte (Selector Completo) */}
-          <div className="sm:col-span-2">
-            <label className="mb-1.5 block text-xs font-semibold text-muted-foreground">
-              Tipo de reporte
-            </label>
-            <select
-              value={tipoReporte}
-              onChange={(e) => setTipoReporte(e.target.value as TipoReporteId)}
-              className="h-10 w-full rounded-xl border border-border bg-background px-3 text-xs font-semibold text-foreground focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/20"
-            >
-              {TIPOS_REPORTE.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.label}
-                </option>
-              ))}
-            </select>
-          </div>
+          <button
+            type="button"
+            onClick={() => setVistaActiva("libro")}
+            className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+              vistaActiva === "libro"
+                ? "bg-primary text-primary-foreground shadow-soft"
+                : "bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground"
+            }`}
+          >
+            <FileSpreadsheet className="h-4 w-4" />
+            Libro de Comprobantes & Excel
+            <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-foreground">
+              {filtrados.length}
+            </span>
+          </button>
         </div>
 
-        {/* Período Rápido */}
-        <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-border">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs font-semibold text-muted-foreground mr-1">Período rápido:</span>
-            <button
-              type="button"
-              onClick={() => setPeriodoRapido("este_mes")}
-              className="rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-xs font-medium hover:bg-primary/10 hover:text-primary transition-colors"
-            >
-              Este mes
-            </button>
-            <button
-              type="button"
-              onClick={() => setPeriodoRapido("mes_anterior")}
-              className="rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-xs font-medium hover:bg-primary/10 hover:text-primary transition-colors"
-            >
-              Mes anterior
-            </button>
-            <button
-              type="button"
-              onClick={() => setPeriodoRapido("este_ano")}
-              className="rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-xs font-medium hover:bg-primary/10 hover:text-primary transition-colors"
-            >
-              Este año
-            </button>
-            <button
-              type="button"
-              onClick={() => setPeriodoRapido("todo")}
-              className="rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-xs font-medium hover:bg-primary/10 hover:text-primary transition-colors"
-            >
-              Histórico completo
-            </button>
-          </div>
-
-          <p className="text-xs text-muted-foreground italic">
-            Incluye fecha, período, identificación, detalle por tarifa de IVA, exentos, exonerados, total y respuesta de Hacienda.
-          </p>
-        </div>
-
-        {/* Botonera de Acción Principal (Como en JosueSoft Report Center) */}
-        <div className="flex flex-wrap items-center gap-3 pt-2">
+        {/* Período Rápido Compacto */}
+        <div className="flex items-center gap-1.5 text-xs">
+          <span className="text-muted-foreground font-medium mr-1 text-[11px]">Período:</span>
           <button
             type="button"
-            onClick={handleDescargarExcel}
-            className="inline-flex items-center gap-2 rounded-xl bg-primary px-6 py-3 text-sm font-bold text-primary-foreground shadow-soft hover:bg-primary/90 transition-all hover:scale-[1.01]"
+            onClick={() => setPeriodoRapido("este_mes")}
+            className="rounded-lg border border-border bg-card px-2.5 py-1 text-[11px] font-medium hover:bg-muted"
           >
-            <FileSpreadsheet className="h-5 w-5" /> GENERAR REPORTE EN EXCEL
+            Este mes
           </button>
           <button
             type="button"
-            onClick={() => {
-              setImportModalMode("expediente");
-              setImportModalOpen(true);
-            }}
-            className="inline-flex items-center gap-2 rounded-xl border border-border bg-muted/50 px-4 py-3 text-xs font-semibold hover:bg-muted transition-colors"
+            onClick={() => setPeriodoRapido("mes_anterior")}
+            className="rounded-lg border border-border bg-card px-2.5 py-1 text-[11px] font-medium hover:bg-muted"
           >
-            <FileCode className="h-4 w-4 text-primary" /> RECONSTRUIR DATOS DESDE XML
+            Mes anterior
           </button>
           <button
             type="button"
-            onClick={() => {
-              setImportModalMode("carpeta");
-              setImportModalOpen(true);
-            }}
-            className="inline-flex items-center gap-2 rounded-xl border border-border bg-muted/50 px-4 py-3 text-xs font-semibold hover:bg-muted transition-colors"
+            onClick={() => setPeriodoRapido("este_ano")}
+            className="rounded-lg border border-border bg-card px-2.5 py-1 text-[11px] font-medium hover:bg-muted"
           >
-            <FolderArchive className="h-4 w-4 text-amber-500" /> ANALIZAR / IMPORTAR CARPETA DE XML
+            Este año
           </button>
-          {comprobantes.some((c) => c.tipoOperacion === "COMPRA") && (
-            <button
-              type="button"
-              onClick={handleLimpiarCompras}
-              className="inline-flex items-center gap-2 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-xs font-semibold text-destructive hover:bg-destructive/20 transition-colors"
-              title="Eliminar comprobantes de compras"
-            >
-              <Trash2 className="h-4 w-4" /> LIMPIAR COMPRAS
-            </button>
-          )}
         </div>
       </div>
+
+      {/* Rango de Fechas Activo */}
+      <div className="flex flex-wrap items-center gap-3 bg-muted/20 border border-border rounded-xl px-4 py-2.5 text-xs">
+        <div className="flex items-center gap-2">
+          <Calendar className="h-4 w-4 text-muted-foreground" />
+          <span className="font-semibold text-muted-foreground">Desde:</span>
+          <input
+            type="date"
+            value={desde}
+            onChange={(e) => setDesde(e.target.value)}
+            className="h-8 rounded-lg border border-border bg-background px-2 font-mono text-xs"
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="font-semibold text-muted-foreground">Hasta:</span>
+          <input
+            type="date"
+            value={hasta}
+            onChange={(e) => setHasta(e.target.value)}
+            className="h-8 rounded-lg border border-border bg-background px-2 font-mono text-xs"
+          />
+        </div>
+        <div className="ml-auto text-xs text-muted-foreground">
+          Empresa activa: <strong className="text-foreground">{activeEstablishment?.name || "Sin empresa seleccionada"}</strong> ({activeEstablishment?.legal_id || "-"})
+        </div>
+      </div>
+
+      {vistaActiva === "declarahub" ? (
+        <DeclaraHubSimulator
+          comprobantes={filtrados}
+          empresaNombre={activeEstablishment?.name || "Empresa Actual"}
+          empresaCedula={activeEstablishment?.legal_id || ""}
+          periodoDesde={desde}
+          periodoHasta={hasta}
+          onDescargarExcel={handleDescargarExcel}
+        />
+      ) : (
+        <>
+          {/* Panel de Filtro de Reporte en Vista Libro */}
+          <div className="rounded-2xl border border-border bg-card p-6 shadow-soft space-y-5">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="sm:col-span-2">
+                <label className="mb-1.5 block text-xs font-semibold text-muted-foreground">
+                  Tipo de reporte para exportar a Excel
+                </label>
+                <select
+                  value={tipoReporte}
+                  onChange={(e) => setTipoReporte(e.target.value as TipoReporteId)}
+                  className="h-10 w-full rounded-xl border border-border bg-background px-3 text-xs font-semibold text-foreground focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/20"
+                >
+                  {TIPOS_REPORTE.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex items-end">
+                <button
+                  type="button"
+                  onClick={handleDescargarExcel}
+                  className="h-10 w-full inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-4 text-xs font-bold text-primary-foreground shadow-soft hover:bg-primary/90 transition-all"
+                >
+                  <FileSpreadsheet className="h-4 w-4" /> GENERAR EXCEL
+                </button>
+              </div>
+            </div>
+
+            {comprobantes.some((c) => c.tipoOperacion === "COMPRA") && (
+              <div className="flex justify-end pt-2 border-t border-border">
+                <button
+                  type="button"
+                  onClick={handleLimpiarCompras}
+                  className="inline-flex items-center gap-2 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-1.5 text-xs font-semibold text-destructive hover:bg-destructive/20 transition-colors"
+                >
+                  <Trash2 className="h-3.5 w-3.5" /> LIMPIAR COMPRAS GUARDADAS
+                </button>
+              </div>
+            )}
+          </div>
 
       {/* Resumen Fiscal / Liquidación de IVA D-104 */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -607,6 +624,8 @@ function ReportsPage() {
           </table>
         </div>
       </div>
+        </>
+      )}
 
       {/* Modal Importar XML / Expediente */}
       <ImportXmlModal

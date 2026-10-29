@@ -7,6 +7,51 @@
 
 ---
 
+### [2026-10-29 09:30] - Lanzamiento de DeclaraHub (Simulador Oficial D-104 & Portal Contable), Sincronización de Consecutivos Caja 1 (Luxx Car Wash) y Blindaje Multi-Tenant de Credenciales de Hacienda
+* **Módulos Afectados:**
+  - `src/components/reports/DeclaraHubSimulator.tsx` (Nuevo)
+  - `src/routes/app.reports.tsx`
+  - `src/components/layout/AppSidebar.tsx`
+  - `src/routes/app.settings.tsx`
+  - `src/routes/app.invoices.new.tsx`
+  - `src/routes/app.cajas.tsx`
+  - `api/index.ts`
+  - `D:/AntigravitDev/AvalCarCr-main/src/lib/facturaos.ts`
+  - Base de Datos Supabase (`cash_registers`)
+* **Incidencias y Necesidades Reportadas:**
+  1. **Solicitud de Módulo D-104 (Alternativa a Q-Declaro de GTI):** El usuario solicitó contar con un módulo similar o superior al que ofrece la competencia (GTI / FacturaElectronicaCR) para que el contador no tenga que calcular manualmente las casillas de la declaración de IVA D-104 en el portal TRIBU-CR / OVI de Hacienda. El usuario bautizó oficialmente la funcionalidad con el nombre de marca **`DeclaraHub`**.
+  2. **Consecutivos de Caja 1 en Luxx Car Wash:** En la interfaz de Cajas y Emisión solo se reflejaba un consecutivo genérico, impidiendo configurar o visualizar tanto la Factura Electrónica (próxima #113) como el Tiquete Electrónico (próximo #8292).
+  3. **Mezcla de Credenciales entre Empresas al Conmutar:** Al entrar a otra empresa en el panel de Configuración de Hacienda, se arrastraban datos en memoria o en `localStorage` de la empresa anterior (ej. Barberías Boss Limitada / SRL. 3102832920 en Grupo G Tres).
+  4. **Emisión de Comprobantes en AvalCar Bloqueada en Producción:** En `avalcommunity.com` la orden se completaba pero no aparecía la tarjeta de factura emitida, a diferencia de las pruebas locales en localhost.
+  5. **Despliegues en Vercel Bloqueados:** Vercel bloqueaba los builds debido a autoría de commits no perteneciente al titular del proyecto Hobby (`alexcrG3` vs `G3alexcr`), vulnerabilidad de TanStack Router y error 404 al consultar el IDP de Hacienda.
+* **Causa Raíz:**
+  1. No existía una pantalla que mapeara automáticamente los comprobantes aceptados del mes a las casillas oficiales del formulario D-104 de Costa Rica ([101] Ventas 13%, [102] Tarifas Reducidas, [103] Exentas, [110] Débito Fiscal, [121]-[130] Crédito Fiscal Compras, [140] Impuesto Neto por Pagar).
+  2. La tabla `cash_registers` de Supabase para la terminal `00001` de Luxx Car Wash tenía valores iniciales desfasados (`next_invoice_number: 11` y `next_ticket_number: 16`), sin reflejar las facturas previas reales (#112) ni los tiquetes (#8291).
+  3. En `app.settings.tsx`, al cambiar de `activeEstablishment`, el estado local mantenía valores en memoria si la nueva empresa aún no tenía credenciales guardadas en base de datos.
+  4. En `AvalCarCr-main/src/lib/facturaos.ts`, la URL de API estaba apuntando fijamente a `http://localhost:3000` en producción, provocando que los navegadores bloquearan la petición por política de seguridad *Mixed Content* (HTTPS -> HTTP).
+  5. En Git, los remotes locales y la cuenta de Vercel tenían propietarios cruzados (`G3alexcr` en Vercel y `alexcrG3` en Git), y TanStack Start absorbía las rutas `/api/hacienda/*` devolviendo HTML 404 en lugar de actuar como proxy reverso.
+* **Cómo se resolvió:**
+  1. **Desarrollo de DeclaraHub (`DeclaraHubSimulator.tsx` & `app.reports.tsx`):**
+     - Se creó el componente `DeclaraHubSimulator` con las casillas oficiales de Hacienda CR D-104.
+     - Botón de copiado en un clic por cada casilla para agilizar el llenado en TRIBU-CR.
+     - Botón para copiar resumen tributario formateado para WhatsApp/correo con el contador.
+     - Pestañas dinámicas en `/app/reports` alternando entre el simulador oficial DeclaraHub y el Libro de Comprobantes con exportación a Excel.
+     - Menú lateral actualizado con acceso directo a `DeclaraHub (D-104)`.
+  2. **Sincronización de Consecutivos (Luxx Car Wash):**
+     - Se actualizaron en Supabase los contadores de la terminal `00001` a `next_invoice_number: 113` y `next_ticket_number: 8292`.
+     - Se actualizó `app.invoices.new.tsx` para mostrar explícitamente en el banner y selector tanto el próximo número de Factura Electrónica (`FE #113`) como de Tiquete Electrónico (`TE #8292`).
+  3. **Aislamiento Multi-Tenant de Credenciales:**
+     - Se reescribió el efecto `useEffect` en `app.settings.tsx` para limpiar y resetear inmediatamente el estado de Hacienda y el perfil al conmutar de empresa si la nueva empresa no tiene credenciales registradas.
+  4. **Enrutamiento Dinámico en AvalCar:**
+     - Se modificó `AvalCarCr-main/src/lib/facturaos.ts` para enviar peticiones a `https://go.facturaos.online/api/v1/invoices` cuando se ejecute en `avalcommunity.com` o producción, y a `http://localhost:3000` solo en desarrollo local.
+  5. **Corrección de Vercel & Proxy Hacienda:**
+     - Se configuró el autor de Git como `G3alexcr <325001872+G3alexcr@users.noreply.github.com>`.
+     - Se integró el proxy de Hacienda en `api/index.ts` para reenviar `/api/hacienda/*` a los servidores oficiales del Ministerio de Hacienda.
+     - Se configuró el remote de Git para empujar en paralelo a `G3alexcr/facturacr-pro` y `alexcrG3/facturacr-pro`.
+* **Prevención:** Mantener la sincronización de consecutivos visible en pantalla para ambos tipos de documentos y utilizar siempre `DeclaraHub` para la validación previa de impuestos antes de presentar ante el Ministerio de Hacienda.
+
+---
+
 ### [2026-10-26 22:50] - Sistema Multi-Caja Dinámico, Edición de Terminales y Conmutación Automática de Actividad Económica en Facturación
 * **Módulos Afectados:**
   - `src/routes/app.cajas.tsx`
