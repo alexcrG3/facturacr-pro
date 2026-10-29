@@ -96,6 +96,20 @@ const CURRENCIES = [
   { code: "EUR", label: "Euros (EUR)", rate: 558.1 },
 ];
 
+const activityDescriptions: Record<string, string> = {
+  "620901": "Otras actividades de tecnología de información y servicios informáticos",
+  "6209.0": "Otras actividades de tecnología de información y servicios informáticos",
+  "620101": "Desarrollo de sistemas informáticos y software",
+  "862001": "Actividades de médicos, consultas y centros de salud especializada",
+  "960201": "Peluquería, barbería y otros tratamientos de belleza",
+  "466101": "Venta al por mayor de combustibles (GLP, gasolinas, diesel)",
+  "477303": "Venta al por menor de gas licuado de petróleo (GLP) en cilindros",
+  "452001": "Mantenimiento, diagnóstico y lavado de vehículos automotores",
+  "453001": "Comercio de repuestos y accesorios para vehículos",
+  "931101": "Gestión de instalaciones deportivas, gimnasios y centros de fitness",
+  "750001": "Actividades veterinarias y clínicas de salud para mascotas",
+};
+
 const UNITS = [
   { code: "Unid", label: "Unidad" },
   { code: "Sp", label: "Servicio profesional" },
@@ -288,14 +302,14 @@ function NewInvoice() {
   });
 
   const [emisorActivityCode, setEmisorActivityCode] = useState(() => {
-    return activeEstablishment?.economic_activity_code || "452001";
+    return activeEstablishment?.economic_activity_code || "620901";
   });
 
   useEffect(() => {
     if (activeEstablishment?.economic_activity_code) {
       setEmisorActivityCode(activeEstablishment.economic_activity_code);
     }
-  }, [activeEstablishment?.economic_activity_code]);
+  }, [activeEstablishment?.id, activeEstablishment?.economic_activity_code]);
   const [docType, setDocType] = useState(() => {
     try {
       const urlType = (search as any)?.type || new URLSearchParams(window.location.search).get("type");
@@ -333,12 +347,18 @@ function NewInvoice() {
       try {
         let loadedList: any[] = [];
 
-        // 1. Consultar directamente en Supabase cash_registers
+        // 1. Consultar directamente en Supabase cash_registers EXCLUSIVAS de este establecimiento
         try {
-          const { data, error } = await supabase
+          let query = supabase
             .from("cash_registers")
             .select("*")
-            .eq("is_active", true)
+            .eq("is_active", true);
+
+          if (activeEstablishment?.id) {
+            query = query.eq("establishment_id", activeEstablishment.id);
+          }
+
+          const { data, error } = await query
             .order("branch_code", { ascending: true })
             .order("terminal_code", { ascending: true });
 
@@ -1201,13 +1221,17 @@ function NewInvoice() {
                       value={emisorActivityCode}
                       onChange={(e) => setEmisorActivityCode(e.target.value)}
                       maxLength={8}
-                      placeholder="6209.0"
+                      placeholder={activeEstablishment?.economic_activity_code || "620901"}
                       className={inputCls + " font-mono text-xs max-w-[140px] font-bold"}
-                      title="Actividad económica registrada ante Tributación (ej: 6209.0)"
+                      title="Actividad económica registrada ante Tributación"
                     />
                     <div className="text-xs text-muted-foreground flex items-center gap-1.5 bg-muted/40 px-3 py-2 rounded-lg border border-border/60">
-                      <span className="font-bold text-foreground font-mono">6209.0:</span>
-                      <span>Otras actividades de la tecnología de información y servicio informáticos</span>
+                      <span className="font-bold text-foreground font-mono">{emisorActivityCode}:</span>
+                      <span>
+                        {activityDescriptions[emisorActivityCode.replace(/\D/g, "")] ||
+                          activityDescriptions[emisorActivityCode] ||
+                          "Actividad Económica Registrada ante Hacienda"}
+                      </span>
                     </div>
                   </div>
                 </Field>

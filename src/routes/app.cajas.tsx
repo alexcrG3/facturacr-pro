@@ -118,6 +118,7 @@ function CajasPage() {
         const { data: dbCajas } = await supabase
           .from("cash_registers")
           .select("*")
+          .eq("establishment_id", activeEstablishment.id)
           .eq("is_active", true)
           .order("branch_code", { ascending: true })
           .order("terminal_code", { ascending: true });
@@ -141,7 +142,7 @@ function CajasPage() {
           {
             id: `caja-${activeEstablishment.code}-1`,
             branch_code: "001",
-            branch_name: `${activeEstablishment.name || "Sucursal Principal"} - Sede Central`,
+            branch_name: `${activeEstablishment.app_name || activeEstablishment.name || "Sucursal Principal"} - Sede Central`,
             terminal_code: "00001",
             terminal_name: "Caja 1 - Terminal de Cobro Principal",
             next_invoice_number: maxFE + 1,
@@ -213,9 +214,9 @@ function CajasPage() {
         )
       );
 
-      // Guardar en localStorage para acceso inmediato del generador de facturas
+      // Guardar en localStorage para acceso inmediato del generador de facturas (aislado por empresa)
       localStorage.setItem(
-        "facturacr_consecutivos_" + selectedCajaForNumeracion.branch_code + "_" + selectedCajaForNumeracion.terminal_code,
+        `facturacr_consecutivos_${activeEstablishment?.id || "default"}_${selectedCajaForNumeracion.branch_code}_${selectedCajaForNumeracion.terminal_code}`,
         JSON.stringify(numeracionForm)
       );
       if (activeEstablishment?.id) {

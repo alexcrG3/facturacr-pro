@@ -111,8 +111,7 @@ function ClientsPage() {
         clientTotals[key].count += 1;
       });
 
-      // 2. Clientes de la base de datos
-      const isMaster = activeEstablishment.code === "grupo_g_tres";
+      // 2. Clientes de la base de datos aislados estrictamente por establecimiento
       const { data: dbClients, error } = await supabase
         .from("clients")
         .select("*")
@@ -120,15 +119,12 @@ function ClientsPage() {
 
       if (error) throw error;
 
-      // Filtrar estrictamente:
-      // Para inquilinos (ej: Nexus Clinic): clientes que hayan facturado en este establecimiento
-      let filteredDbClients: any[] = [];
-      if (isMaster) {
-        filteredDbClients = dbClients || [];
-      } else {
-        const estLegalIds = Object.keys(clientTotals);
-        filteredDbClients = (dbClients || []).filter((c: any) => estLegalIds.includes(c.legal_id));
-      }
+      // Filtrar estrictamente: solo clientes que pertenezcan o hayan facturado con ESTE establecimiento
+      const estLegalIds = Object.keys(clientTotals);
+      const filteredDbClients = (dbClients || []).filter((c: any) =>
+        (c.establishment_id && c.establishment_id === activeEstablishment.id) ||
+        estLegalIds.includes(c.legal_id)
+      );
 
       // Añadir clientes facturados en esta empresa que no estén en la tabla clients
       const existingIds = new Set(filteredDbClients.map((c: any) => c.legal_id));
@@ -258,6 +254,7 @@ function ClientsPage() {
           phone: clientForm.phone.trim() || "",
           district: clientForm.city || "San José",
           economic_activity: clientForm.economicActivity.trim() || null,
+          ...(activeEstablishment?.id ? { establishment_id: activeEstablishment.id } : {}),
         })
         .select()
         .single();
