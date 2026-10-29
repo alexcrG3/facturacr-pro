@@ -235,54 +235,56 @@ function ReportsPage() {
         title="DeclaraHub — Contabilidad y D-104"
         description="Portal oficial de conciliación contable, borrador de declaración mensual D-104 de Hacienda CR y reportes en Excel."
         actions={
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setAsientosModalOpen(true)}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-3 py-2 text-xs font-bold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-500/20 transition-colors cursor-pointer"
-            >
-              <Scale className="h-4 w-4 text-indigo-600" /> Asientos Contables (Debe/Haber)
-            </button>
-            <button
-              type="button"
-              onClick={() => setD151ModalOpen(true)}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-purple-500/30 bg-purple-500/10 px-3 py-2 text-xs font-bold text-purple-700 dark:text-purple-300 hover:bg-purple-500/20 transition-colors cursor-pointer"
-            >
-              <FileSpreadsheet className="h-4 w-4 text-purple-600" /> Borrador D-151 (&gt; ₡2.5M)
-            </button>
-            <button
-              type="button"
-              onClick={() => setAceptadorModalOpen(true)}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs font-bold text-emerald-600 hover:bg-emerald-500/20 transition-colors"
-            >
-              <ShieldCheck className="h-4 w-4" /> Aceptar Gastos (CCE)
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setImportModalMode("expediente");
-                setImportModalOpen(true);
-              }}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-xs font-semibold hover:bg-muted transition-colors"
-            >
-              <FileCode className="h-4 w-4 text-primary" /> Reconstruir datos desde XML
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setImportModalMode("carpeta");
-                setImportModalOpen(true);
-              }}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-xs font-semibold hover:bg-muted transition-colors"
-            >
-              <FolderArchive className="h-4 w-4 text-amber-500" /> Analizar / Importar carpeta de XML
-            </button>
+          <div className="flex flex-wrap items-center gap-2.5">
+            {/* Toolbar elegante con divisiones y estilo SaaS profesional */}
+            <div className="inline-flex items-center rounded-xl border border-border bg-card shadow-xs overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setAsientosModalOpen(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted transition-colors cursor-pointer"
+                title="Generar asientos de partida doble (Debe/Haber)"
+              >
+                <Scale className="h-3.5 w-3.5 text-indigo-500" /> Asientos
+              </button>
+              <div className="h-4 w-px bg-border" />
+              <button
+                type="button"
+                onClick={() => setD151ModalOpen(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted transition-colors cursor-pointer"
+                title="Declaración Informativa Anual D-151 (> ¢2.5M)"
+              >
+                <FileSpreadsheet className="h-3.5 w-3.5 text-purple-500" /> D-151
+              </button>
+              <div className="h-4 w-px bg-border" />
+              <button
+                type="button"
+                onClick={() => setAceptadorModalOpen(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted transition-colors cursor-pointer"
+                title="Aceptar gastos de compras ante Hacienda (CCE)"
+              >
+                <ShieldCheck className="h-3.5 w-3.5 text-emerald-500" /> Aceptar Gastos
+              </button>
+              <div className="h-4 w-px bg-border" />
+              <button
+                type="button"
+                onClick={() => {
+                  setImportModalMode("expediente");
+                  setImportModalOpen(true);
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted transition-colors cursor-pointer"
+                title="Cargar o reconstruir comprobantes desde archivos XML"
+              >
+                <FolderArchive className="h-3.5 w-3.5 text-amber-500" /> Importar XML
+              </button>
+            </div>
+
+            {/* Acción Primaria */}
             <button
               type="button"
               onClick={handleDescargarExcel}
-              className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-xs font-bold text-white shadow-soft hover:bg-emerald-700 transition-all hover:scale-[1.02]"
+              className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-xs font-bold text-primary-foreground shadow-sm hover:bg-primary/90 transition-all cursor-pointer"
             >
-              <FileSpreadsheet className="h-4 w-4" /> GENERAR REPORTE EN EXCEL
+              <FileSpreadsheet className="h-4 w-4" /> Generar Excel D-104
             </button>
           </div>
         }

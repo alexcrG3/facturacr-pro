@@ -21,13 +21,19 @@ import {
   Calendar,
   Layers,
   Lock,
+  Scale,
+  FolderArchive,
 } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/common/PageHeader";
 import { formatCRC } from "@/lib/mock-data";
 import { supabase } from "@/lib/supabase";
 import { useApp, EstablishmentRecord } from "@/contexts/AppContext";
-import { generarExcelContador, cargarComprobantesContablesAsync } from "@/lib/accounting-reports";
+import { generarExcelContador, cargarComprobantesContablesAsync, ComprobanteContable } from "@/lib/accounting-reports";
+import { ImportXmlModal } from "@/components/reports/ImportXmlModal";
+import { BandejaAceptacionGastosModal } from "@/components/reports/BandejaAceptacionGastosModal";
+import { D151ReportModal } from "@/components/reports/D151ReportModal";
+import { AsientosContablesModal } from "@/components/reports/AsientosContablesModal";
 
 export const Route = createFileRoute("/app/contador")({
   component: PortalContadorPage,
@@ -81,12 +87,29 @@ interface MetricasEmpresa {
 }
 
 function PortalContadorPage() {
-  const { activeEstablishment, establishments, user } = useApp();
+  const { activeEstablishment, establishments, user, setActiveEstablishment } = useApp();
   const navigate = useNavigate();
 
   const [metricasEmpresa, setMetricasEmpresa] = useState<MetricasEmpresa | null>(null);
   const [cargando, setCargando] = useState(true);
   const [copied, setCopied] = useState(false);
+
+  // Comprobantes contables y herramientas
+  const [comprobantes, setComprobantes] = useState<ComprobanteContable[]>([]);
+  const [asientosModalOpen, setAsientosModalOpen] = useState(false);
+  const [d151ModalOpen, setD151ModalOpen] = useState(false);
+  const [aceptadorModalOpen, setAceptadorModalOpen] = useState(false);
+  const [importModalOpen, setImportModalOpen] = useState(false);
+  const [importModalMode, setImportModalMode] = useState<"expediente" | "carpeta">("expediente");
+
+  // Sociedades del cliente autorizadas
+  const empresasDelCliente = useMemo(() => {
+    const allowed = (user as any)?.allowed_establishment_ids;
+    if (Array.isArray(allowed) && allowed.length > 0) {
+      return establishments.filter((e) => allowed.includes(e.id));
+    }
+    return establishments;
+  }, [establishments, user]);
 
   // Modal de Invitación / Asignación de Contador
   const [invitarModalOpen, setInvitarModalOpen] = useState(false);
@@ -99,6 +122,22 @@ function PortalContadorPage() {
   const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().slice(0, 10);
   const [desde, setDesde] = useState(firstDay);
   const [hasta, setHasta] = useState(lastDay);
+
+  const refrescarComprobantes = async () => {
+    if (!activeEstablishment?.id) {
+      setComprobantes([]);
+      return;
+    }
+    try {
+      const docs = await cargarComprobantesContablesAsync(activeEstablishment.id, {
+        name: activeEstablishment.name,
+        legalId: activeEstablishment.legal_id,
+      });
+      setComprobantes(docs);
+    } catch (e) {
+      console.error("Error al cargar comprobantes:", e);
+    }
+  };
 
   // =========================================================================
   // AISLAMIENTO MULTI-TENANT ESTRICTO:
@@ -236,6 +275,7 @@ function PortalContadorPage() {
 
   useEffect(() => {
     cargarDatosEmpresa();
+    refrescarComprobantes();
   }, [activeEstablishment?.id, desde, hasta]);
 
   // Conmutar a DeclaraHub
@@ -295,28 +335,133 @@ Emitido por su Contador mediante DeclaraHub FacturaCR Pro.`;
 
   return (
     <div className="mx-auto max-w-7xl space-y-6 pb-12">
-      {/* Header */}
+      {/* Header con Barra de Herramientas Contables Completa */}
       <PageHeader
         title="Portal del Contador — Supervisión & Auditoría D-104"
         description={`Panel oficial del contador para auditar las actividades comerciales, el estado de aceptación CCE y la liquidación del D-104 de ${activeEstablishment?.name || "tu empresa"}.`}
         actions={
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2.5">
+            {/* Toolbar Contable Ejecutivo */}
+            <div className="inline-flex items-center rounded-xl border border-border bg-card shadow-xs overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setAsientosModalOpen(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted transition-colors cursor-pointer"
+                title="Exportar asientos de partida doble (Debe/Haber) para el ERP contable"
+              >
+                <Scale className="h-3.5 w-3.5 text-indigo-500" /> Asientos
+              </button>
+              <div className="h-4 w-px bg-border" />
+              <button
+                type="button"
+                onClick={() => setD151ModalOpen(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted transition-colors cursor-pointer"
+                title="Borrador Informativo Anual D-151 (> ¢2.5M)"
+              >
+                <FileSpreadsheet className="h-3.5 w-3.5 text-purple-500" /> D-151
+              </button>
+              <div className="h-4 w-px bg-border" />
+              <button
+                type="button"
+                onClick={() => setAceptadorModalOpen(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted transition-colors cursor-pointer"
+                title="Aceptar gastos y compras ante Hacienda (CCE)"
+              >
+                <ShieldCheck className="h-3.5 w-3.5 text-emerald-500" /> Aceptar Gastos
+              </button>
+              <div className="h-4 w-px bg-border" />
+              <button
+                type="button"
+                onClick={() => {
+                  setImportModalMode("expediente");
+                  setImportModalOpen(true);
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted transition-colors cursor-pointer"
+                title="Importar o reconstruir comprobantes desde archivos XML"
+              >
+                <FolderArchive className="h-3.5 w-3.5 text-amber-500" /> Importar XML
+              </button>
+              <div className="h-4 w-px bg-border" />
+              <button
+                type="button"
+                onClick={handleCopiarMensaje}
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted transition-colors cursor-pointer"
+                title="Copiar resumen del cierre para WhatsApp del cliente"
+              >
+                {copied ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Send className="h-3.5 w-3.5 text-blue-500" />}
+                WhatsApp
+              </button>
+              <div className="h-4 w-px bg-border" />
+              <button
+                type="button"
+                onClick={() => setInvitarModalOpen(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted transition-colors cursor-pointer"
+                title="Asignar auditor o contador"
+              >
+                <UserPlus className="h-3.5 w-3.5 text-primary" /> Asignar Auditor
+              </button>
+            </div>
+
+            {/* Acción Primaria: Descargar Excel D-104 */}
             <button
               type="button"
-              onClick={() => setInvitarModalOpen(true)}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-3.5 py-2 text-xs font-bold text-primary hover:bg-primary/20 transition-colors cursor-pointer"
+              onClick={handleDescargarExcel}
+              className="inline-flex items-center gap-2 rounded-xl border border-border bg-card px-3.5 py-2 text-xs font-bold text-foreground hover:bg-muted transition-colors shadow-xs cursor-pointer"
+              title="Descargar libro contable completo con desglose de ventas y compras"
             >
-              <UserPlus className="h-4 w-4" /> Asignar Auditor / Contador
+              <FileSpreadsheet className="h-4 w-4 text-emerald-600" /> Excel D-104
             </button>
+
+            {/* Abrir DeclaraHub */}
             <Link
               to="/app/reports"
-              className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 text-xs font-bold text-white shadow-soft hover:bg-emerald-700 transition-all hover:scale-[1.02]"
+              className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2 text-xs font-bold text-primary-foreground shadow-sm hover:bg-primary/90 transition-all hover:scale-[1.02]"
             >
-              <ShieldCheck className="h-4 w-4" /> Abrir DeclaraHub D-104
+              <Sparkles className="h-4 w-4" /> DeclaraHub D-104
             </Link>
           </div>
         }
       />
+
+      {/* Selector de Sociedades del Cliente (Multi-Empresa) */}
+      {empresasDelCliente.length > 1 && (
+        <div className="rounded-2xl border border-border bg-card p-4 shadow-xs space-y-2">
+          <div className="flex items-center justify-between text-xs">
+            <span className="font-bold text-foreground flex items-center gap-1.5">
+              <Building2 className="h-4 w-4 text-primary" /> Sociedades Autorizadas de este Cliente ({empresasDelCliente.length}):
+            </span>
+            <span className="text-[11px] text-muted-foreground">
+              Haz clic para auditar la sociedad seleccionada
+            </span>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            {empresasDelCliente.map((emp) => {
+              const isActive = activeEstablishment?.id === emp.id;
+              return (
+                <button
+                  key={emp.id}
+                  type="button"
+                  onClick={() => setActiveEstablishment(emp)}
+                  className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                    isActive
+                      ? "bg-primary text-primary-foreground shadow-sm ring-2 ring-primary/20"
+                      : "bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground border border-border"
+                  }`}
+                >
+                  <Building2 className="h-3.5 w-3.5" />
+                  <span className="font-bold">{emp.name || emp.app_name}</span>
+                  <span className={`font-mono text-[10px] px-1.5 py-0.2 rounded ${
+                    isActive ? "bg-white/20 text-white" : "bg-muted text-muted-foreground"
+                  }`}>
+                    {emp.legal_id}
+                  </span>
+                  {isActive && <Check className="h-3.5 w-3.5 text-white" />}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Rango de Fechas del Cierre Fiscal */}
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-card p-4 shadow-soft">
@@ -677,6 +822,50 @@ Emitido por su Contador mediante DeclaraHub FacturaCR Pro.`;
           </div>
         </div>
       )}
+
+      {/* Modal Importar XML / Expediente */}
+      <ImportXmlModal
+        isOpen={importModalOpen}
+        onClose={() => setImportModalOpen(false)}
+        onImportComplete={async () => {
+          await cargarDatosEmpresa();
+          await refrescarComprobantes();
+        }}
+        initialMode={importModalMode}
+      />
+
+      {/* Modal Aceptador Masivo de Gastos ante Hacienda (CCE) */}
+      <BandejaAceptacionGastosModal
+        isOpen={aceptadorModalOpen}
+        onClose={() => setAceptadorModalOpen(false)}
+        compras={comprobantes.filter((c) => c.tipoOperacion === "COMPRA")}
+        empresaNombre={activeEstablishment?.name || "Empresa Actual"}
+        empresaCedula={activeEstablishment?.legal_id || "3101483899"}
+        onCompletado={async () => {
+          await cargarDatosEmpresa();
+          await refrescarComprobantes();
+        }}
+      />
+
+      {/* Modal Reporte Informativo Anual D-151 (> ₡2.5M) */}
+      <D151ReportModal
+        isOpen={d151ModalOpen}
+        onClose={() => setD151ModalOpen(false)}
+        comprobantes={comprobantes}
+        empresaNombre={activeEstablishment?.name || "Empresa Actual"}
+        empresaCedula={activeEstablishment?.legal_id || "3101483899"}
+      />
+
+      {/* Modal Exportador de Asientos Contables (Debe y Haber) */}
+      <AsientosContablesModal
+        isOpen={asientosModalOpen}
+        onClose={() => setAsientosModalOpen(false)}
+        comprobantes={comprobantes}
+        empresaNombre={activeEstablishment?.name || "Empresa Actual"}
+        empresaCedula={activeEstablishment?.legal_id || "3101483899"}
+        periodoDesde={desde}
+        periodoHasta={hasta}
+      />
     </div>
   );
 }
