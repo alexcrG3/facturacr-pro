@@ -17,6 +17,7 @@ import {
   Info,
   X,
   Check,
+  Lock,
 } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/common/PageHeader";
@@ -52,6 +53,14 @@ function CajasPage() {
   const [isNumeracionModalOpen, setIsNumeracionModalOpen] = useState(false);
   const [selectedCajaForNumeracion, setSelectedCajaForNumeracion] = useState<CashRegister | null>(null);
   const [editingCaja, setEditingCaja] = useState<CashRegister | null>(null);
+  const [blockedCajaModal, setBlockedCajaModal] = useState<{
+    caja: CashRegister;
+    totalDocs: number;
+    feCount: number;
+    teCount: number;
+    ncCount: number;
+    reason: string;
+  } | null>(null);
 
   // Formulario Editar Caja
   const [editCajaForm, setEditCajaForm] = useState({
@@ -330,12 +339,60 @@ function CajasPage() {
   };
 
   const handleDeleteCaja = async (caja: CashRegister) => {
+    // 1. Verificación obligatoria: Caja Principal (001 / 00001)
     if (caja.branch_code === "001" && caja.terminal_code === "00001") {
-      toast.error("No es posible eliminar la Caja Principal (001 / 00001) por requerimiento de Hacienda.");
+      setBlockedCajaModal({
+        caja,
+        totalDocs: Math.max(0, (caja.next_invoice_number || 1) - 1 + (caja.next_ticket_number || 1) - 1),
+        feCount: Math.max(0, (caja.next_invoice_number || 1) - 1),
+        teCount: Math.max(0, (caja.next_ticket_number || 1) - 1),
+        ncCount: Math.max(0, (caja.next_credit_note_number || 1) - 1),
+        reason: "La Caja Principal (001 / 00001) es obligatoria por normativa de la Dirección General de Tributación para todo emisor y no puede ser removida del sistema.",
+      });
       return;
     }
 
-    if (confirm("¿Estás seguro de que deseas eliminar la Caja " + caja.terminal_code + " (" + caja.terminal_name + ")?")) {
+    // 2. Verificación de comprobantes emitidos en numeración consecutiva
+    const nextFE = Number(caja.next_invoice_number) || 1;
+    const nextTE = Number(caja.next_ticket_number) || 1;
+    const nextNC = Number(caja.next_credit_note_number) || 1;
+    const nextND = Number(caja.next_debit_note_number) || 1;
+    const hasConsecutiveHistory = nextFE > 1 || nextTE > 1 || nextNC > 1 || nextND > 1;
+
+    // 3. Verificación exhaustiva en la base de datos de facturas
+    const prefix = `${caja.branch_code}${caja.terminal_code}`;
+    let dbInvoiceCount = 0;
+    try {
+      const { data: invs } = await supabase
+        .from("invoices")
+        .select("id, consecutive_number")
+        .like("consecutive_number", `${prefix}%`);
+      if (invs && invs.length > 0) {
+        dbInvoiceCount = invs.length;
+      }
+    } catch (e) {
+      console.warn("Error consultando facturas de la caja:", e);
+    }
+
+    if (hasConsecutiveHistory || dbInvoiceCount > 0) {
+      const feCount = Math.max(0, nextFE - 1);
+      const teCount = Math.max(0, nextTE - 1);
+      const ncCount = Math.max(0, nextNC - 1);
+      const totalDocs = Math.max(dbInvoiceCount, feCount + teCount + ncCount);
+
+      setBlockedCajaModal({
+        caja,
+        totalDocs,
+        feCount,
+        teCount,
+        ncCount,
+        reason: `Esta caja ya cuenta con comprobantes electrónicos registrados ante el Ministerio de Hacienda (Facturas o Tiquetes).`,
+      });
+      return;
+    }
+
+    // 4. Si la caja nunca emitió facturas (0 comprobantes), solicitar confirmación explícita
+    if (confirm(`¿Estás seguro de que deseas eliminar la Caja ${caja.terminal_code} (${caja.terminal_name})? Esta caja no tiene facturas emitidas.`)) {
       try {
         await supabase.from("cash_registers").delete().eq("id", caja.id);
       } catch {}
@@ -541,14 +598,27 @@ function CajasPage() {
                       >
                         <Edit2 className="h-4 w-4" />
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteCaja(caja)}
-                        className="rounded p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors cursor-pointer"
-                        title="Eliminar caja"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
+                      {((caja.next_invoice_number && caja.next_invoice_number > 1) ||
+                        (caja.next_ticket_number && caja.next_ticket_number > 1) ||
+                        (caja.branch_code === "001" && caja.terminal_code === "00001")) ? (
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteCaja(caja)}
+                          className="rounded p-1.5 text-amber-600 hover:bg-amber-500/10 transition-colors cursor-pointer"
+                          title="Caja protegida por Hacienda: contiene comprobantes emitidos (Clic para ver detalles)"
+                        >
+                          <Lock className="h-4 w-4 text-amber-500" />
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteCaja(caja)}
+                          className="rounded p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors cursor-pointer"
+                          title="Eliminar caja sin comprobantes"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -860,6 +930,92 @@ function CajasPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Protección Tributaria: Caja con Facturas Emitidas */}
+      {blockedCajaModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-lg rounded-2xl border-2 border-destructive/40 bg-card p-6 shadow-2xl space-y-5 animate-in fade-in-50 duration-200">
+            {/* Header del Modal */}
+            <div className="flex items-start gap-4">
+              <div className="grid h-12 w-12 place-items-center rounded-2xl bg-destructive/10 text-destructive shrink-0 shadow-xs">
+                <ShieldAlert className="h-7 w-7" />
+              </div>
+              <div className="flex-1 space-y-1">
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-destructive/10 text-destructive text-[10px] font-black uppercase tracking-wider">
+                  Acción Bloqueada por Hacienda
+                </div>
+                <h3 className="text-base font-bold text-foreground leading-snug">
+                  No es posible eliminar la Caja {blockedCajaModal.caja.terminal_code}
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  Sucursal {blockedCajaModal.caja.branch_code} · {blockedCajaModal.caja.terminal_name}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setBlockedCajaModal(null)}
+                className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Tarjeta de Comprobantes Registrados */}
+            <div className="rounded-xl border border-border bg-muted/40 p-4 space-y-3">
+              <div className="text-xs font-bold text-foreground flex items-center justify-between">
+                <span>Comprobantes Emitidos con esta Caja:</span>
+                <span className="font-mono text-primary font-black text-sm">
+                  {blockedCajaModal.totalDocs} Comprobantes
+                </span>
+              </div>
+              <div className="grid grid-cols-3 gap-2 pt-1">
+                <div className="rounded-lg bg-background p-2 text-center border border-border/60">
+                  <span className="text-[10px] text-muted-foreground block font-bold">Facturas (FE)</span>
+                  <span className="text-xs font-mono font-black text-foreground">
+                    #{blockedCajaModal.feCount}
+                  </span>
+                </div>
+                <div className="rounded-lg bg-background p-2 text-center border border-border/60">
+                  <span className="text-[10px] text-muted-foreground block font-bold">Tiquetes (TE)</span>
+                  <span className="text-xs font-mono font-black text-foreground">
+                    #{blockedCajaModal.teCount}
+                  </span>
+                </div>
+                <div className="rounded-lg bg-background p-2 text-center border border-border/60">
+                  <span className="text-[10px] text-muted-foreground block font-bold">Notas Créd. (NC)</span>
+                  <span className="text-xs font-mono font-black text-foreground">
+                    #{blockedCajaModal.ncCount}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Explicación Legal de Hacienda */}
+            <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-xs space-y-2 text-amber-950 dark:text-amber-200">
+              <div className="font-bold flex items-center gap-2 text-amber-800 dark:text-amber-400">
+                <Lock className="h-4 w-4" /> Normativa Oficial de Tributación (DGT-R-033-2019):
+              </div>
+              <p className="text-[11px] leading-relaxed">
+                Por regulación expresa del Ministerio de Hacienda de Costa Rica, una terminal que haya emitido comprobantes fiscales <strong>nunca puede ser eliminada del sistema</strong>. Eliminarla rompería la secuencia consecutiva de 20 dígitos y la clave criptográfica de 50 dígitos, lo que ocasionaría el <strong>rechazo inmediato de futuras declaraciones</strong>.
+              </p>
+              <p className="text-[11px] font-semibold text-amber-900 dark:text-amber-300">
+                💡 Si tu negocio ya no utiliza esta caja físicamente, simplemente no emitas más comprobantes desde ella. El historial permanecerá debidamente resguardado para cualquier auditoría contable.
+              </p>
+            </div>
+
+            {/* Botón de cierre */}
+            <div className="flex justify-end pt-2 border-t border-border">
+              <button
+                type="button"
+                onClick={() => setBlockedCajaModal(null)}
+                className="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-xs font-bold text-primary-foreground shadow-sm hover:bg-primary/90 transition-all cursor-pointer"
+              >
+                <Check className="h-4 w-4" /> Entendido (Proteger Correlatividad)
+              </button>
+            </div>
           </div>
         </div>
       )}
