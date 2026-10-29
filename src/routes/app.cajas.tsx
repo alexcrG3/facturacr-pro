@@ -235,7 +235,7 @@ function CajasPage() {
 
       setIsNumeracionModalOpen(false);
       toast.success("¡Numeración consecutiva actualizada con éxito!", {
-        description: "Sucursal " + selectedCajaForNumeracion.branch_code + " - Caja " + selectedCajaForNumeracion.terminal_code + " continuará desde Factura #" + numeracionForm.next_invoice_number,
+        description: `Sucursal ${selectedCajaForNumeracion.branch_code} · Caja ${selectedCajaForNumeracion.terminal_code}: FE #${numeracionForm.next_invoice_number} | TE #${numeracionForm.next_ticket_number}`,
       });
     } catch (err) {
       console.error("Error al actualizar numeración:", err);

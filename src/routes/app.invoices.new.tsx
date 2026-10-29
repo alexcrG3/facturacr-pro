@@ -1072,10 +1072,16 @@ function NewInvoice() {
                   <Store className="h-5 w-5" />
                 </div>
                 <div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-xs font-bold text-foreground">Punto de Emisión (Caja / Terminal)</span>
-                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 font-mono font-bold">
-                      Próximo: #{currentSequenceNumber}
+                    <span className="text-[10px] px-2 py-0.5 rounded-md bg-purple-100 dark:bg-purple-950/80 text-purple-700 dark:text-purple-300 font-mono font-bold">
+                      FE: #{activeCaja.next_invoice_number || 1}
+                    </span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 font-mono font-bold">
+                      TE: #{activeCaja.next_ticket_number || 1}
+                    </span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 font-mono font-bold">
+                      Próximo {docType === "04" ? "TE" : "FE"}: #{currentSequenceNumber}
                     </span>
                   </div>
                   <p className="text-[11px] text-muted-foreground mt-0.5">
@@ -1114,7 +1120,7 @@ function NewInvoice() {
                   >
                     {cajas.map((c) => (
                       <option key={c.id} value={c.id}>
-                        {c.terminal_name} (Terminal {c.terminal_code})
+                        {c.terminal_name} (Terminal {c.terminal_code}) — FE: #{c.next_invoice_number || 1} | TE: #{c.next_ticket_number || 1}
                       </option>
                     ))}
                   </select>
