@@ -408,8 +408,12 @@ function NewInvoice() {
           loadedList = [defaultCaja];
         }
 
-        setCajas(loadedList);
-        setSelectedCajaId((prev) => (loadedList.some((c) => c.id === prev) ? prev : loadedList[0].id));
+        // Filtrar solo cajas activas para emisión de facturas (respetando cajas desactivadas)
+        const activeCajas = loadedList.filter((c: any) => c.is_active !== false);
+        const finalCajas = activeCajas.length > 0 ? activeCajas : loadedList;
+
+        setCajas(finalCajas);
+        setSelectedCajaId((prev) => (finalCajas.some((c) => c.id === prev) ? prev : finalCajas[0].id));
       } catch (err) {
         console.error("Error cargando cajas:", err);
       }

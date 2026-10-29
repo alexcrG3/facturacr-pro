@@ -10,6 +10,9 @@ import {
   Edit2,
   CheckCircle2,
   AlertCircle,
+  AlertTriangle,
+  Power,
+  Loader2,
   Sparkles,
   Layers,
   ArrowRight,
@@ -53,14 +56,19 @@ function CajasPage() {
   const [isNumeracionModalOpen, setIsNumeracionModalOpen] = useState(false);
   const [selectedCajaForNumeracion, setSelectedCajaForNumeracion] = useState<CashRegister | null>(null);
   const [editingCaja, setEditingCaja] = useState<CashRegister | null>(null);
-  const [blockedCajaModal, setBlockedCajaModal] = useState<{
-    caja: CashRegister;
+
+  // Modal para eliminar o desactivar caja (CRUD Delete - Idéntico al de Empresas)
+  const [showDeleteCajaModal, setShowDeleteCajaModal] = useState(false);
+  const [deleteTargetCaja, setDeleteTargetCaja] = useState<CashRegister | null>(null);
+  const [deleteTargetStats, setDeleteTargetStats] = useState<{
     totalDocs: number;
     feCount: number;
     teCount: number;
     ncCount: number;
-    reason: string;
-  } | null>(null);
+    dbCount: number;
+  }>({ totalDocs: 0, feCount: 0, teCount: 0, ncCount: 0, dbCount: 0 });
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [isProcessingDelete, setIsProcessingDelete] = useState(false);
 
   // Formulario Editar Caja
   const [editCajaForm, setEditCajaForm] = useState({
@@ -338,70 +346,116 @@ function CajasPage() {
     }
   };
 
-  const handleDeleteCaja = async (caja: CashRegister) => {
-    // 1. Verificación obligatoria: Caja Principal (001 / 00001)
-    if (caja.branch_code === "001" && caja.terminal_code === "00001") {
-      setBlockedCajaModal({
-        caja,
-        totalDocs: Math.max(0, (caja.next_invoice_number || 1) - 1 + (caja.next_ticket_number || 1) - 1),
-        feCount: Math.max(0, (caja.next_invoice_number || 1) - 1),
-        teCount: Math.max(0, (caja.next_ticket_number || 1) - 1),
-        ncCount: Math.max(0, (caja.next_credit_note_number || 1) - 1),
-        reason: "La Caja Principal (001 / 00001) es obligatoria por normativa de la Dirección General de Tributación para todo emisor y no puede ser removida del sistema.",
-      });
-      return;
-    }
+  // ─── CRUD CAJA: ELIMINAR / DESACTIVAR (MODAL IDÉNTICO AL DE EMPRESAS) ────────
+  const handleOpenDeleteCajaModal = async (caja: CashRegister) => {
+    setDeleteTargetCaja(caja);
+    setDeleteConfirmText("");
 
-    // 2. Verificación de comprobantes emitidos en numeración consecutiva
     const nextFE = Number(caja.next_invoice_number) || 1;
     const nextTE = Number(caja.next_ticket_number) || 1;
     const nextNC = Number(caja.next_credit_note_number) || 1;
     const nextND = Number(caja.next_debit_note_number) || 1;
-    const hasConsecutiveHistory = nextFE > 1 || nextTE > 1 || nextNC > 1 || nextND > 1;
+    const feCount = Math.max(0, nextFE - 1);
+    const teCount = Math.max(0, nextTE - 1);
+    const ncCount = Math.max(0, nextNC - 1);
 
-    // 3. Verificación exhaustiva en la base de datos de facturas
     const prefix = `${caja.branch_code}${caja.terminal_code}`;
-    let dbInvoiceCount = 0;
+    let dbCount = 0;
     try {
       const { data: invs } = await supabase
         .from("invoices")
         .select("id, consecutive_number")
         .like("consecutive_number", `${prefix}%`);
       if (invs && invs.length > 0) {
-        dbInvoiceCount = invs.length;
+        dbCount = invs.length;
       }
     } catch (e) {
       console.warn("Error consultando facturas de la caja:", e);
     }
 
-    if (hasConsecutiveHistory || dbInvoiceCount > 0) {
-      const feCount = Math.max(0, nextFE - 1);
-      const teCount = Math.max(0, nextTE - 1);
-      const ncCount = Math.max(0, nextNC - 1);
-      const totalDocs = Math.max(dbInvoiceCount, feCount + teCount + ncCount);
+    const totalDocs = Math.max(dbCount, feCount + teCount + ncCount);
+    setDeleteTargetStats({
+      totalDocs,
+      feCount,
+      teCount,
+      ncCount,
+      dbCount,
+    });
+    setShowDeleteCajaModal(true);
+  };
 
-      setBlockedCajaModal({
-        caja,
-        totalDocs,
-        feCount,
-        teCount,
-        ncCount,
-        reason: `Esta caja ya cuenta con comprobantes electrónicos registrados ante el Ministerio de Hacienda (Facturas o Tiquetes).`,
-      });
+  const handleToggleCajaStatus = async (caja: CashRegister, newActive: boolean) => {
+    setIsProcessingDelete(true);
+    try {
+      try {
+        await supabase
+          .from("cash_registers")
+          .update({ is_active: newActive })
+          .eq("id", caja.id);
+      } catch (e) {
+        console.warn("Update Supabase cash_registers:", e);
+      }
+
+      const updated = cajasList.map((c) =>
+        c.id === caja.id ? { ...c, is_active: newActive } : c
+      );
+      setCajasList(updated);
+      if (activeEstablishment?.id) {
+        localStorage.setItem(
+          `facturaos_cajas_${activeEstablishment.id}`,
+          JSON.stringify(updated)
+        );
+      }
+
+      toast.success(
+        `Caja ${caja.terminal_code} (${caja.terminal_name}) ${
+          newActive ? "ACTIVADA" : "DESACTIVADA"
+        }. Su historial fiscal y correlatividad permanecen 100% resguardados.`
+      );
+      setShowDeleteCajaModal(false);
+    } catch (err: any) {
+      toast.error(err.message || "Error al actualizar estado de la caja");
+    } finally {
+      setIsProcessingDelete(false);
+    }
+  };
+
+  const handleConfirmPurgeCaja = async (caja: CashRegister) => {
+    if (caja.branch_code === "001" && caja.terminal_code === "00001") {
+      toast.error("La Caja Principal (001 / 00001) está protegida por normativa de Hacienda y no puede ser eliminada.");
       return;
     }
 
-    // 4. Si la caja nunca emitió facturas (0 comprobantes), solicitar confirmación explícita
-    if (confirm(`¿Estás seguro de que deseas eliminar la Caja ${caja.terminal_code} (${caja.terminal_name})? Esta caja no tiene facturas emitidas.`)) {
+    if (deleteTargetStats.totalDocs > 0) {
+      const proceed = confirm(
+        `⚠️ ADVERTENCIA CRÍTICA DE HACIENDA (DGT-R-033-2019):\n\nEsta caja cuenta con ${deleteTargetStats.totalDocs} comprobantes emitidos. Eliminarla romperá la secuencia correlativa de 20 dígitos.\n\n¿Estás completamente seguro de forzar el borrado definitivo? (Se recomienda en su lugar 'Solo Desactivar')`
+      );
+      if (!proceed) return;
+    }
+
+    setIsProcessingDelete(true);
+    try {
       try {
         await supabase.from("cash_registers").delete().eq("id", caja.id);
-      } catch {}
+      } catch (e) {
+        console.warn("Delete Supabase cash_registers:", e);
+      }
+
       const updated = cajasList.filter((c) => c.id !== caja.id);
       setCajasList(updated);
       if (activeEstablishment?.id) {
-        localStorage.setItem(`facturaos_cajas_${activeEstablishment.id}`, JSON.stringify(updated));
+        localStorage.setItem(
+          `facturaos_cajas_${activeEstablishment.id}`,
+          JSON.stringify(updated)
+        );
       }
-      toast.success("Caja " + caja.terminal_code + " eliminada");
+
+      toast.success(`Caja ${caja.terminal_code} (${caja.terminal_name}) eliminada definitivamente.`);
+      setShowDeleteCajaModal(false);
+    } catch (err: any) {
+      toast.error(err.message || "Error al eliminar la caja");
+    } finally {
+      setIsProcessingDelete(false);
     }
   };
 
@@ -557,7 +611,14 @@ function CajasPage() {
                       <Store className="h-3.5 w-3.5 text-primary" />
                       {caja.terminal_code}
                     </div>
-                    <div className="text-[11px] text-muted-foreground">{caja.terminal_name}</div>
+                    <div className="flex items-center gap-1.5 pt-0.5">
+                      <span className="text-[11px] text-muted-foreground">{caja.terminal_name}</span>
+                      {caja.is_active === false && (
+                        <span className="inline-flex items-center rounded-full bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-bold text-amber-600 dark:text-amber-400">
+                          Desactivada
+                        </span>
+                      )}
+                    </div>
                   </td>
 
                   {/* Consecutivos Actuales */}
@@ -598,23 +659,23 @@ function CajasPage() {
                       >
                         <Edit2 className="h-4 w-4" />
                       </button>
-                      {((caja.next_invoice_number && caja.next_invoice_number > 1) ||
-                        (caja.next_ticket_number && caja.next_ticket_number > 1) ||
-                        (caja.branch_code === "001" && caja.terminal_code === "00001")) ? (
+
+                      {/* Botón Eliminar o Desactivar Caja (Modal Idéntico al de Empresas) */}
+                      {caja.branch_code === "001" && caja.terminal_code === "00001" ? (
                         <button
                           type="button"
-                          onClick={() => handleDeleteCaja(caja)}
+                          onClick={() => handleOpenDeleteCajaModal(caja)}
                           className="rounded p-1.5 text-amber-600 hover:bg-amber-500/10 transition-colors cursor-pointer"
-                          title="Caja protegida por Hacienda: contiene comprobantes emitidos (Clic para ver detalles)"
+                          title="Caja Principal (001 / 00001) protegida por Hacienda (Clic para ver opciones)"
                         >
                           <Lock className="h-4 w-4 text-amber-500" />
                         </button>
                       ) : (
                         <button
                           type="button"
-                          onClick={() => handleDeleteCaja(caja)}
+                          onClick={() => handleOpenDeleteCajaModal(caja)}
                           className="rounded p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors cursor-pointer"
-                          title="Eliminar caja sin comprobantes"
+                          title="Eliminar o desactivar caja"
                         >
                           <Trash2 className="h-4 w-4" />
                         </button>
@@ -934,86 +995,133 @@ function CajasPage() {
         </div>
       )}
 
-      {/* Modal de Protección Tributaria: Caja con Facturas Emitidas */}
-      {blockedCajaModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-lg rounded-2xl border-2 border-destructive/40 bg-card p-6 shadow-2xl space-y-5 animate-in fade-in-50 duration-200">
-            {/* Header del Modal */}
-            <div className="flex items-start gap-4">
-              <div className="grid h-12 w-12 place-items-center rounded-2xl bg-destructive/10 text-destructive shrink-0 shadow-xs">
-                <ShieldAlert className="h-7 w-7" />
-              </div>
-              <div className="flex-1 space-y-1">
-                <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-destructive/10 text-destructive text-[10px] font-black uppercase tracking-wider">
-                  Acción Bloqueada por Hacienda
+      {/* ─── MODAL ELIMINAR O DESACTIVAR CAJA (CRUD DELETE - IDÉNTICO AL DE EMPRESAS) ────── */}
+      {showDeleteCajaModal && deleteTargetCaja && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs animate-in fade-in-50 duration-200">
+          <div className="w-full max-w-md rounded-3xl bg-card border border-border p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-border pb-3">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-2xl bg-destructive/10 text-destructive flex items-center justify-center shrink-0">
+                  <Trash2 className="h-5 w-5" />
                 </div>
-                <h3 className="text-base font-bold text-foreground leading-snug">
-                  No es posible eliminar la Caja {blockedCajaModal.caja.terminal_code}
-                </h3>
-                <p className="text-xs text-muted-foreground">
-                  Sucursal {blockedCajaModal.caja.branch_code} · {blockedCajaModal.caja.terminal_name}
-                </p>
+                <div>
+                  <h3 className="font-bold text-foreground text-base">Eliminar o Desactivar Caja</h3>
+                  <p className="text-xs text-muted-foreground">Gestión de baja y seguridad tributaria para puntos de venta</p>
+                </div>
               </div>
               <button
                 type="button"
-                onClick={() => setBlockedCajaModal(null)}
-                className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
+                onClick={() => setShowDeleteCajaModal(false)}
+                className="rounded-lg p-1 text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
               >
-                <X className="h-5 w-5" />
+                <X className="h-4 w-4" />
               </button>
             </div>
 
-            {/* Tarjeta de Comprobantes Registrados */}
-            <div className="rounded-xl border border-border bg-muted/40 p-4 space-y-3">
-              <div className="text-xs font-bold text-foreground flex items-center justify-between">
-                <span>Comprobantes Emitidos con esta Caja:</span>
-                <span className="font-mono text-primary font-black text-sm">
-                  {blockedCajaModal.totalDocs} Comprobantes
-                </span>
+            <div className="space-y-3 text-xs">
+              <div className="rounded-2xl border border-destructive/20 bg-destructive/5 p-4 space-y-2">
+                <p className="font-bold text-foreground text-sm">
+                  Caja {deleteTargetCaja.terminal_code} — {deleteTargetCaja.terminal_name}
+                </p>
+                <p className="text-muted-foreground">
+                  Sucursal: <strong>{deleteTargetCaja.branch_code} ({deleteTargetCaja.branch_name})</strong> • Terminal: <strong>{deleteTargetCaja.terminal_code}</strong>
+                </p>
+                {deleteTargetStats.totalDocs > 0 ? (
+                  <div className="space-y-1.5 pt-1">
+                    <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400 font-semibold">
+                      <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                      <span>Tiene {deleteTargetStats.totalDocs} comprobantes registrados en el sistema:</span>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5 pt-0.5">
+                      <span className="rounded bg-primary/10 px-2 py-0.5 font-mono text-[11px] font-bold text-primary">
+                        FE: #{deleteTargetStats.feCount}
+                      </span>
+                      <span className="rounded bg-emerald-500/10 px-2 py-0.5 font-mono text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
+                        TE: #{deleteTargetStats.teCount}
+                      </span>
+                      <span className="rounded bg-amber-500/10 px-2 py-0.5 font-mono text-[11px] font-bold text-amber-700 dark:text-amber-300">
+                        NC: #{deleteTargetStats.ncCount}
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-emerald-600 dark:text-emerald-400 font-medium">Esta caja no tiene facturas emitidas aún.</p>
+                )}
               </div>
-              <div className="grid grid-cols-3 gap-2 pt-1">
-                <div className="rounded-lg bg-background p-2 text-center border border-border/60">
-                  <span className="text-[10px] text-muted-foreground block font-bold">Facturas (FE)</span>
-                  <span className="text-xs font-mono font-black text-foreground">
-                    #{blockedCajaModal.feCount}
-                  </span>
-                </div>
-                <div className="rounded-lg bg-background p-2 text-center border border-border/60">
-                  <span className="text-[10px] text-muted-foreground block font-bold">Tiquetes (TE)</span>
-                  <span className="text-xs font-mono font-black text-foreground">
-                    #{blockedCajaModal.teCount}
-                  </span>
-                </div>
-                <div className="rounded-lg bg-background p-2 text-center border border-border/60">
-                  <span className="text-[10px] text-muted-foreground block font-bold">Notas Créd. (NC)</span>
-                  <span className="text-xs font-mono font-black text-foreground">
-                    #{blockedCajaModal.ncCount}
-                  </span>
-                </div>
+
+              <div className="rounded-xl border border-border bg-muted/40 p-3 text-[11px] text-muted-foreground space-y-1.5">
+                <p className="font-bold text-foreground">💡 ¿Qué prefieres hacer?</p>
+                <p>
+                  • <strong>Desactivar (Recomendado):</strong> Conserva todas sus facturas, tiquetes y numeraciones consecutivas para reportes del contador y Ministerio de Hacienda, pero oculta la caja para evitar emisiones accidentales.
+                </p>
+                <p>
+                  • <strong>Eliminar Definitivamente:</strong> Borra la terminal por completo.
+                </p>
+                {deleteTargetStats.totalDocs > 0 && (
+                  <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 p-2 text-[10.5px] text-amber-900 dark:text-amber-200">
+                    ⚠️ <strong>Normativa DGT-R-033-2019 de Hacienda:</strong> Las terminales con facturas emitidas deben conservarse para no romper la secuencia consecutiva de 20 dígitos. Se recomienda usar <strong>Solo Desactivar</strong>.
+                  </div>
+                )}
               </div>
+
+              {deleteTargetCaja.branch_code === "001" && deleteTargetCaja.terminal_code === "00001" ? (
+                <div className="rounded-xl border border-destructive/20 bg-destructive/10 p-3 text-[11px] text-destructive font-semibold">
+                  🛡️ La <strong>Caja Principal (001 / 00001)</strong> es obligatoria por requerimiento de la Dirección General de Tributación para todo emisor y no puede ser removida del sistema.
+                </div>
+              ) : (
+                deleteTargetStats.totalDocs > 0 && (
+                  <div className="space-y-1 pt-1">
+                    <label className="font-semibold text-foreground">
+                      Escribe el nombre <span className="font-mono text-destructive font-bold select-all">{deleteTargetCaja.terminal_name}</span> para confirmar:
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Escribe el nombre exacto..."
+                      value={deleteConfirmText}
+                      onChange={(e) => setDeleteConfirmText(e.target.value)}
+                      className="h-10 w-full rounded-xl border border-border bg-background px-3 text-xs focus:border-destructive focus:outline-none"
+                    />
+                  </div>
+                )
+              )}
             </div>
 
-            {/* Explicación Legal de Hacienda */}
-            <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-xs space-y-2 text-amber-950 dark:text-amber-200">
-              <div className="font-bold flex items-center gap-2 text-amber-800 dark:text-amber-400">
-                <Lock className="h-4 w-4" /> Normativa Oficial de Tributación (DGT-R-033-2019):
-              </div>
-              <p className="text-[11px] leading-relaxed">
-                Por regulación expresa del Ministerio de Hacienda de Costa Rica, una terminal que haya emitido comprobantes fiscales <strong>nunca puede ser eliminada del sistema</strong>. Eliminarla rompería la secuencia consecutiva de 20 dígitos y la clave criptográfica de 50 dígitos, lo que ocasionaría el <strong>rechazo inmediato de futuras declaraciones</strong>.
-              </p>
-              <p className="text-[11px] font-semibold text-amber-900 dark:text-amber-300">
-                💡 Si tu negocio ya no utiliza esta caja físicamente, simplemente no emitas más comprobantes desde ella. El historial permanecerá debidamente resguardado para cualquier auditoría contable.
-              </p>
-            </div>
-
-            {/* Botón de cierre */}
-            <div className="flex justify-end pt-2 border-t border-border">
+            <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-2.5 pt-3 border-t border-border">
               <button
                 type="button"
-                onClick={() => setBlockedCajaModal(null)}
-                className="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-xs font-bold text-primary-foreground shadow-sm hover:bg-primary/90 transition-all cursor-pointer"
+                onClick={() => setShowDeleteCajaModal(false)}
+                className="rounded-xl border border-border px-4 py-2.5 font-semibold text-muted-foreground hover:bg-muted cursor-pointer text-xs"
               >
-                <Check className="h-4 w-4" /> Entendido (Proteger Correlatividad)
+                Cancelar
+              </button>
+
+              {/* Botón para solo Desactivar */}
+              {!(deleteTargetCaja.branch_code === "001" && deleteTargetCaja.terminal_code === "00001") && (
+                <button
+                  type="button"
+                  disabled={isProcessingDelete}
+                  onClick={() => handleToggleCajaStatus(deleteTargetCaja, false)}
+                  className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-amber-300 bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-400 px-4 py-2.5 font-bold cursor-pointer text-xs disabled:opacity-50"
+                >
+                  {isProcessingDelete ? <Loader2 className="h-4 w-4 animate-spin" /> : <Power className="h-4 w-4 text-amber-600 dark:text-amber-400" />}
+                  Solo Desactivar
+                </button>
+              )}
+
+              {/* Botón para Borrado Definitivo */}
+              <button
+                type="button"
+                disabled={
+                  isProcessingDelete ||
+                  (deleteTargetCaja.branch_code === "001" && deleteTargetCaja.terminal_code === "00001") ||
+                  (deleteTargetStats.totalDocs > 0 &&
+                    deleteConfirmText.trim().toLowerCase() !== deleteTargetCaja.terminal_name.trim().toLowerCase())
+                }
+                onClick={() => handleConfirmPurgeCaja(deleteTargetCaja)}
+                className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-destructive hover:bg-destructive/90 text-destructive-foreground px-4 py-2.5 font-bold shadow-md shadow-destructive/25 cursor-pointer text-xs disabled:opacity-40"
+              >
+                {isProcessingDelete ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                Eliminar Definitivamente
               </button>
             </div>
           </div>
