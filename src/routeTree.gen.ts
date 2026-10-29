@@ -27,6 +27,7 @@ import { Route as AppInvoicesRouteImport } from './routes/app.invoices'
 import { Route as AppProductsRouteImport } from './routes/app.products'
 import { Route as AppReportsRouteImport } from './routes/app.reports'
 import { Route as AppSettingsRouteImport } from './routes/app.settings'
+import { Route as AppTesoreriaRouteImport } from './routes/app.tesoreria'
 import { Route as AppInvoicesIndexRouteImport } from './routes/app.invoices.index'
 import { Route as AppInvoicesNewRouteImport } from './routes/app.invoices.new'
 
@@ -120,6 +121,11 @@ const AppSettingsRoute = AppSettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => AppRoute,
 } as any)
+const AppTesoreriaRoute = AppTesoreriaRouteImport.update({
+  id: '/tesoreria',
+  path: '/tesoreria',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppInvoicesIndexRoute = AppInvoicesIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -149,6 +155,7 @@ export interface FileRoutesByFullPath {
   '/app/products': typeof AppProductsRoute
   '/app/reports': typeof AppReportsRoute
   '/app/settings': typeof AppSettingsRoute
+  '/app/tesoreria': typeof AppTesoreriaRoute
   '/app/': typeof AppIndexRoute
   '/app/invoices/new': typeof AppInvoicesNewRoute
   '/app/invoices/': typeof AppInvoicesIndexRoute
@@ -169,6 +176,7 @@ export interface FileRoutesByTo {
   '/app/products': typeof AppProductsRoute
   '/app/reports': typeof AppReportsRoute
   '/app/settings': typeof AppSettingsRoute
+  '/app/tesoreria': typeof AppTesoreriaRoute
   '/app': typeof AppIndexRoute
   '/app/invoices/new': typeof AppInvoicesNewRoute
   '/app/invoices': typeof AppInvoicesIndexRoute
@@ -192,6 +200,7 @@ export interface FileRoutesById {
   '/app/products': typeof AppProductsRoute
   '/app/reports': typeof AppReportsRoute
   '/app/settings': typeof AppSettingsRoute
+  '/app/tesoreria': typeof AppTesoreriaRoute
   '/app/': typeof AppIndexRoute
   '/app/invoices/new': typeof AppInvoicesNewRoute
   '/app/invoices/': typeof AppInvoicesIndexRoute
@@ -216,6 +225,7 @@ export interface FileRouteTypes {
     | '/app/products'
     | '/app/reports'
     | '/app/settings'
+    | '/app/tesoreria'
     | '/app/'
     | '/app/invoices/new'
     | '/app/invoices/'
@@ -236,6 +246,7 @@ export interface FileRouteTypes {
     | '/app/products'
     | '/app/reports'
     | '/app/settings'
+    | '/app/tesoreria'
     | '/app'
     | '/app/invoices/new'
     | '/app/invoices'
@@ -258,6 +269,7 @@ export interface FileRouteTypes {
     | '/app/products'
     | '/app/reports'
     | '/app/settings'
+    | '/app/tesoreria'
     | '/app/'
     | '/app/invoices/new'
     | '/app/invoices/'
@@ -400,6 +412,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSettingsRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/tesoreria': {
+      id: '/app/tesoreria'
+      path: '/tesoreria'
+      fullPath: '/app/tesoreria'
+      preLoaderRoute: typeof AppTesoreriaRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/app/invoices/': {
       id: '/app/invoices/'
       path: '/'
@@ -443,6 +462,7 @@ interface AppRouteChildren {
   AppProductsRoute: typeof AppProductsRoute
   AppReportsRoute: typeof AppReportsRoute
   AppSettingsRoute: typeof AppSettingsRoute
+  AppTesoreriaRoute: typeof AppTesoreriaRoute
   AppIndexRoute: typeof AppIndexRoute
 }
 
@@ -458,6 +478,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppProductsRoute: AppProductsRoute,
   AppReportsRoute: AppReportsRoute,
   AppSettingsRoute: AppSettingsRoute,
+  AppTesoreriaRoute: AppTesoreriaRoute,
   AppIndexRoute: AppIndexRoute,
 }
 

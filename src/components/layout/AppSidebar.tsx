@@ -18,6 +18,7 @@ import {
   Store,
   ShieldCheck,
   Briefcase,
+  WalletCards,
 } from "lucide-react";
 import { Logo } from "./Logo";
 import { cn } from "@/lib/utils";
@@ -55,6 +56,7 @@ const nav: NavItem[] = [
     ],
   },
   { to: "/app/clients", label: "Clientes", icon: Users, roles: ["super_admin", "admin", "contador", "vendedor"] },
+  { to: "/app/tesoreria", label: "Cobros y Pagos (CxC)", icon: WalletCards, roles: ["super_admin", "admin", "contador", "vendedor"] },
   { to: "/app/products", label: "Productos y Servicios", icon: Package, roles: ["super_admin", "admin", "contador", "vendedor"] },
   { to: "/app/cabys", label: "Mis CAByS", icon: Sparkles, roles: ["super_admin", "admin", "contador", "vendedor"] },
   { to: "/app/cajas", label: "Cajas", icon: Store, roles: ["super_admin", "admin", "contador"] },
