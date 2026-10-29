@@ -122,9 +122,9 @@ function SettingsPage() {
     activeEstablishment?.atv_username ||
     (cleanCedula ? `cpj-${cleanCedula}@stag.comprobanteselectronicos.go.cr` : "")
   );
-  const [claveAtv, setClaveAtv] = useState(activeEstablishment?.atv_password || "vPVwmpuo%kF3g12&CR^J");
+  const [claveAtv, setClaveAtv] = useState(activeEstablishment?.atv_password || "");
   const [pinP12, setPinP12] = useState(activeEstablishment?.atv_pin || "");
-  const [codigoActividad, setCodigoActividad] = useState(activeEstablishment?.economic_activity_code || "620901");
+  const [codigoActividad, setCodigoActividad] = useState(activeEstablishment?.economic_activity_code || "");
   const [p12FileName, setP12FileName] = useState(cleanCedula ? `${cleanCedula}.p12` : "");
   const [sucursal, setSucursal] = useState("1");
   const [terminal, setTerminal] = useState("1");
@@ -377,24 +377,43 @@ function SettingsPage() {
     loadTeamProfiles();
   }, [activeEstablishment, isSuperAdmin, hideSuperAdminInTeam]);
 
-  // Cargar configuración guardada de localStorage al montar
+  // Cargar configuración guardada de localStorage al montar o cambiar de empresa
   useEffect(() => {
     try {
       if (!activeEstablishment?.id) return;
       const estId = activeEstablishment.id;
+      const cleanCed = (activeEstablishment.legal_id || "").replace(/\D/g, "");
 
       const saved = localStorage.getItem(`facturacr_hacienda_config_${estId}`);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (parsed.ambiente) setAmbiente(parsed.ambiente);
-        if (parsed.usuarioAtv) setUsuarioAtv(parsed.usuarioAtv);
-        if (parsed.claveAtv) setClaveAtv(parsed.claveAtv);
-        if (parsed.pinP12) setPinP12(parsed.pinP12);
-        if (parsed.codigoActividad) setCodigoActividad(parsed.codigoActividad);
-        if (parsed.p12FileName) setP12FileName(parsed.p12FileName);
-        if (parsed.sucursal) setSucursal(parsed.sucursal);
-        if (parsed.terminal) setTerminal(parsed.terminal);
+        setAmbiente(parsed.ambiente || (activeEstablishment.atv_environment as any) || "staging");
+        setUsuarioAtv(
+          parsed.usuarioAtv ||
+          activeEstablishment.atv_username ||
+          (cleanCed ? `cpj-${cleanCed}@stag.comprobanteselectronicos.go.cr` : "")
+        );
+        setClaveAtv(parsed.claveAtv || activeEstablishment.atv_password || "");
+        setPinP12(parsed.pinP12 || activeEstablishment.atv_pin || "");
+        setCodigoActividad(parsed.codigoActividad || activeEstablishment.economic_activity_code || "");
+        setP12FileName(parsed.p12FileName || (cleanCed ? `${cleanCed}.p12` : ""));
+        setSucursal(parsed.sucursal || "1");
+        setTerminal(parsed.terminal || "1");
+      } else {
+        // Aislamiento total: resetear a los datos propios de la empresa activa desde base de datos
+        setAmbiente((activeEstablishment.atv_environment as any) || "staging");
+        setUsuarioAtv(
+          activeEstablishment.atv_username ||
+          (cleanCed ? `cpj-${cleanCed}@stag.comprobanteselectronicos.go.cr` : "")
+        );
+        setClaveAtv(activeEstablishment.atv_password || "");
+        setPinP12(activeEstablishment.atv_pin || "");
+        setCodigoActividad(activeEstablishment.economic_activity_code || "");
+        setP12FileName(cleanCed ? `${cleanCed}.p12` : "");
+        setSucursal("1");
+        setTerminal("1");
       }
+      setResultadoTest(null);
 
       const cloudSavedConfig = localStorage.getItem(`facturacr_cloud_config_${estId}`);
       if (cloudSavedConfig) {
@@ -405,11 +424,28 @@ function SettingsPage() {
         if (typeof cParsed.organizeByMonth === "boolean") setOrganizeByMonth(cParsed.organizeByMonth);
         if (typeof cParsed.notifyAccountant === "boolean") setNotifyAccountant(cParsed.notifyAccountant);
         if (cParsed.accountantEmail) setAccountantEmail(cParsed.accountantEmail);
+      } else {
+        setDriveAccount(activeEstablishment.email || "");
+        setDriveFolder(`/${(activeEstablishment.name || "Facturas").replace(/[^a-zA-Z0-9]/g, "_")}/`);
       }
+
+      setGmailEmail(activeEstablishment.email || "");
 
       const savedBranches = localStorage.getItem(`facturacr_branches_${estId}`);
       if (savedBranches) {
         setBranches(JSON.parse(savedBranches));
+      } else {
+        setBranches([
+          {
+            id: `b-${estId}-1`,
+            code: "001",
+            name: "Sucursal Central",
+            address: activeEstablishment.address || "Costa Rica",
+            phone: activeEstablishment.phone || "+506 2222-0000",
+            terminalsCount: 1,
+            isDefault: true,
+          },
+        ]);
       }
     } catch {
       // Ignorar error de parsing

@@ -38,6 +38,44 @@ export default async function handler(req: any, res: any) {
       }
     }
 
+    // Proxy transparente para endpoints de Hacienda CR en Vercel
+    if (url.pathname.startsWith("/api/hacienda/")) {
+      let targetBase = "";
+      let remainingPath = "";
+      if (url.pathname.startsWith("/api/hacienda/idp")) {
+        targetBase = "https://idp.comprobanteselectronicos.go.cr";
+        remainingPath = url.pathname.replace(/^\/api\/hacienda\/idp/, "");
+      } else if (url.pathname.startsWith("/api/hacienda/api-stag")) {
+        targetBase = "https://api-sandbox.comprobanteselectronicos.go.cr";
+        remainingPath = url.pathname.replace(/^\/api\/hacienda\/api-stag/, "");
+      } else if (url.pathname.startsWith("/api/hacienda/api-prod")) {
+        targetBase = "https://api.comprobanteselectronicos.go.cr";
+        remainingPath = url.pathname.replace(/^\/api\/hacienda\/api-prod/, "");
+      }
+
+      if (targetBase) {
+        const targetUrl = `${targetBase}${remainingPath}${url.search}`;
+        const proxyHeaders = new Headers(headers);
+        proxyHeaders.delete("host");
+        proxyHeaders.delete("connection");
+
+        const proxyRes = await fetch(targetUrl, {
+          method: req.method,
+          headers: proxyHeaders,
+          body,
+        });
+
+        res.statusCode = proxyRes.status;
+        proxyRes.headers.forEach((val: string, key: string) => {
+          res.setHeader(key, val);
+        });
+
+        const arrayBuffer = await proxyRes.arrayBuffer();
+        res.end(Buffer.from(arrayBuffer));
+        return;
+      }
+    }
+
     const webReq = new Request(url.href, {
       method: req.method,
       headers,
