@@ -27,6 +27,7 @@ import {
   AlertTriangle,
   Power,
   ShieldAlert,
+  ExternalLink,
 } from "lucide-react";
 import { createClient } from "@supabase/supabase-js";
 import { supabase, type Role } from "@/lib/supabase";
@@ -101,6 +102,96 @@ function CommandCenterStandalone() {
   const [deletingCompany, setDeletingCompany] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
 
+  // Modal para Asignar Sociedades a Usuario / Cliente
+  const [showAssignModal, setShowAssignModal] = useState(false);
+  const [adminUsers, setAdminUsers] = useState<any[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
+  const [selectedUserForAssign, setSelectedUserForAssign] = useState<any | null>(null);
+  const [selectedEstIds, setSelectedEstIds] = useState<string[]>([]);
+  const [selectedPrimaryEstId, setSelectedPrimaryEstId] = useState<string>("");
+  const [selectedAssignRole, setSelectedAssignRole] = useState<Role>("admin");
+  const [savingAssignment, setSavingAssignment] = useState(false);
+  const [userSearchTerm, setUserSearchTerm] = useState("");
+
+  const loadAdminUsers = async () => {
+    setLoadingUsers(true);
+    try {
+      const res = await fetch("/api/v1/admin/users");
+      const data = await res.json();
+      if (data.success && Array.isArray(data.users)) {
+        setAdminUsers(data.users);
+        setUsersCount(data.users.length);
+        if (!selectedUserForAssign && data.users.length > 0) {
+          handleSelectUser(data.users[0]);
+        }
+      }
+    } catch (err) {
+      console.error("Error cargando usuarios de admin:", err);
+    } finally {
+      setLoadingUsers(false);
+    }
+  };
+
+  const handleSelectUser = (u: any) => {
+    setSelectedUserForAssign(u);
+    const allowed = Array.isArray(u.allowedEstablishmentIds) ? u.allowedEstablishmentIds : [];
+    setSelectedEstIds(allowed);
+    setSelectedPrimaryEstId(u.establishmentId || (allowed.length > 0 ? allowed[0] : ""));
+    setSelectedAssignRole(u.role || "admin");
+  };
+
+  const handleToggleEstablishmentForUser = (estId: string) => {
+    setSelectedEstIds((prev) => {
+      if (prev.includes(estId)) {
+        const next = prev.filter((id) => id !== estId);
+        if (selectedPrimaryEstId === estId) {
+          setSelectedPrimaryEstId(next.length > 0 ? next[0] : "");
+        }
+        return next;
+      } else {
+        const next = [...prev, estId];
+        if (!selectedPrimaryEstId) {
+          setSelectedPrimaryEstId(estId);
+        }
+        return next;
+      }
+    });
+  };
+
+  const handleSaveAssignment = async () => {
+    if (!selectedUserForAssign) return;
+    setSavingAssignment(true);
+    try {
+      const res = await fetch("/api/v1/admin/users/assign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: selectedUserForAssign.id,
+          allowedEstablishmentIds: selectedEstIds,
+          primaryEstablishmentId: selectedPrimaryEstId || (selectedEstIds.length > 0 ? selectedEstIds[0] : null),
+          role: selectedAssignRole,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "No se pudo actualizar las sociedades");
+      }
+
+      toast.success(`¡Sociedades autorizadas actualizadas para ${selectedUserForAssign.email}!`, {
+        description: `Ahora tiene acceso a ${selectedEstIds.length} sociedad(es).`,
+      });
+
+      await loadAdminUsers();
+      setShowAssignModal(false);
+    } catch (err: any) {
+      console.error("Error al guardar asignación:", err);
+      toast.error(err.message || "Error al asignar sociedades");
+    } finally {
+      setSavingAssignment(false);
+    }
+  };
+
   const loadData = async () => {
     setLoading(true);
     try {
@@ -150,12 +241,15 @@ function CommandCenterStandalone() {
 
   useEffect(() => {
     loadData();
+    loadAdminUsers();
   }, []);
 
   const handleIngresar = (est: any) => {
     setActiveEstablishment(est);
-    toast.success(`Accediendo a: ${est.app_name || est.name}`);
-    navigate({ to: "/app/dashboard" });
+    toast.success(`Abriendo ${est.app_name || est.name} en una nueva pestaña...`);
+    if (typeof window !== "undefined") {
+      window.open(`/app/dashboard?est=${est.id}`, "_blank");
+    }
   };
 
   const handleCreateCompany = async (e: React.FormEvent) => {
@@ -566,8 +660,20 @@ function CommandCenterStandalone() {
             </button>
 
             <button
+              onClick={() => {
+                loadAdminUsers();
+                setShowAssignModal(true);
+              }}
+              className="inline-flex items-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-4 py-2.5 text-sm font-semibold transition-all shadow-xs cursor-pointer"
+              title="Vincular múltiples sociedades a un cliente o contador"
+            >
+              <Users className="h-4 w-4" />
+              <span>Asignar Sociedades a Cliente</span>
+            </button>
+
+            <button
               onClick={() => setShowModal(true)}
-              className="inline-flex items-center gap-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 text-sm font-semibold shadow-md shadow-blue-600/25 transition-all"
+              className="inline-flex items-center gap-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 text-sm font-semibold shadow-md shadow-blue-600/25 transition-all cursor-pointer"
             >
               <Plus className="h-4 w-4" />
               <span>+ Nueva Empresa</span>
@@ -624,15 +730,24 @@ function CommandCenterStandalone() {
           </div>
 
           {/* Card 3 */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-xs flex items-center justify-between">
+          <div
+            onClick={() => {
+              loadAdminUsers();
+              setShowAssignModal(true);
+            }}
+            className="rounded-2xl border border-slate-200 bg-white p-6 shadow-xs flex items-center justify-between cursor-pointer hover:border-indigo-300 hover:shadow-md transition-all group"
+            title="Clic para gestionar usuarios y asignar sociedades"
+          >
             <div>
-              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 group-hover:text-indigo-600 transition-colors">
                 Usuarios Totales
               </p>
               <p className="text-3xl font-black text-slate-900 mt-1">{usersCount}</p>
-              <p className="text-xs text-slate-500 mt-0.5">Administradores, cajeros y staff</p>
+              <p className="text-xs text-indigo-600 font-semibold mt-0.5 flex items-center gap-1">
+                Asignar sociedades &rarr;
+              </p>
             </div>
-            <div className="h-12 w-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center">
+            <div className="h-12 w-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center group-hover:bg-indigo-600 group-hover:text-white transition-all">
               <Users className="h-6 w-6" />
             </div>
           </div>
@@ -807,9 +922,10 @@ function CommandCenterStandalone() {
                       <button
                         onClick={() => handleIngresar(est)}
                         className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white px-3.5 py-2 text-xs font-bold shadow-md shadow-blue-600/25 transition-all cursor-pointer"
+                        title="Abrir panel de esta empresa en una nueva pestaña (sin salir del Centro de Mando)"
                       >
                         <span>Ingresar</span>
-                        <ArrowRight className="h-3.5 w-3.5" />
+                        <ExternalLink className="h-3.5 w-3.5" />
                       </button>
                     </div>
                   </div>
@@ -1367,6 +1483,191 @@ function CommandCenterStandalone() {
               >
                 {deletingCompany ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                 Eliminar Definitivamente
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── MODAL ASIGNAR SOCIEDADES A USUARIO / CLIENTE ────────────────────── */}
+      {showAssignModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-2xl rounded-3xl bg-white p-6 shadow-2xl space-y-5 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-3">
+                <div className="h-11 w-11 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
+                  <Users className="h-6 w-6" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 text-lg">
+                    Asignar Sociedades a Cliente / Usuario
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Controla qué cédulas jurídicas y empresas puede ver y operar cada cliente o contador.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAssignModal(false)}
+                className="h-8 w-8 rounded-full border border-slate-200 text-slate-400 hover:text-slate-600 hover:bg-slate-100 flex items-center justify-center cursor-pointer"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* Selector de Usuario */}
+            <div className="space-y-2">
+              <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                1. Selecciona el Usuario o Cliente:
+              </label>
+              {loadingUsers ? (
+                <div className="flex items-center gap-2 p-3 text-xs text-slate-500">
+                  <Loader2 className="h-4 w-4 animate-spin text-indigo-600" /> Cargando usuarios...
+                </div>
+              ) : (
+                <div className="grid gap-2">
+                  <select
+                    value={selectedUserForAssign?.id || ""}
+                    onChange={(e) => {
+                      const found = adminUsers.find((u) => u.id === e.target.value);
+                      if (found) handleSelectUser(found);
+                    }}
+                    className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium focus:border-indigo-600 focus:outline-none"
+                  >
+                    {adminUsers.map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.fullName} ({u.email}) — Rol: {u.role}
+                      </option>
+                    ))}
+                  </select>
+
+                  {selectedUserForAssign && (
+                    <div className="rounded-xl border border-indigo-100 bg-indigo-50/50 p-3 flex flex-wrap items-center justify-between gap-2 text-xs">
+                      <div>
+                        <strong className="text-slate-900">{selectedUserForAssign.fullName}</strong>
+                        <span className="text-slate-500 ml-2">({selectedUserForAssign.email})</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-slate-500">Rol asignado:</span>
+                        <select
+                          value={selectedAssignRole}
+                          onChange={(e) => setSelectedAssignRole(e.target.value as Role)}
+                          className="rounded-lg border border-indigo-200 bg-white px-2 py-1 text-xs font-bold text-indigo-700"
+                        >
+                          <option value="admin">Administrador (Dueño)</option>
+                          <option value="contador">Contador / Auditor</option>
+                          <option value="facturador">Facturador / Cajero</option>
+                        </select>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Lista de Sociedades con Checkboxes */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                  2. Sociedades Autorizadas ({selectedEstIds.length} seleccionadas):
+                </label>
+                <span className="text-[11px] text-slate-400">
+                  Marca las casillas de las empresas que pertenecen a este cliente
+                </span>
+              </div>
+
+              <div className="divide-y divide-slate-100 rounded-2xl border border-slate-200 bg-slate-50/50 overflow-hidden">
+                {establishmentsList.map((est) => {
+                  const isChecked = selectedEstIds.includes(est.id);
+                  const isPrimary = selectedPrimaryEstId === est.id;
+
+                  return (
+                    <div
+                      key={est.id}
+                      onClick={() => handleToggleEstablishmentForUser(est.id)}
+                      className={`flex items-center justify-between p-3.5 transition-all cursor-pointer ${
+                        isChecked ? "bg-indigo-50/40 hover:bg-indigo-50/60" : "bg-white hover:bg-slate-50"
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => {}} // Evento manejado por el contenedor div
+                          className="h-4 w-4 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                        />
+                        <div>
+                          <p className="text-sm font-bold text-slate-900">
+                            {est.app_name || est.name}
+                          </p>
+                          <p className="text-xs text-slate-500 font-mono">
+                            Cédula: {est.legal_id} • Cód: {est.code}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        {isChecked && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedPrimaryEstId(est.id);
+                            }}
+                            className={`rounded-lg px-2.5 py-1 text-[11px] font-bold border transition-all cursor-pointer ${
+                              isPrimary
+                                ? "bg-emerald-600 text-white border-emerald-600 shadow-xs"
+                                : "bg-white text-slate-600 border-slate-200 hover:bg-slate-100"
+                            }`}
+                            title="Establecer como sociedad principal al iniciar sesión"
+                          >
+                            {isPrimary ? "★ Principal" : "Hacer Principal"}
+                          </button>
+                        )}
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${
+                            isChecked ? "bg-indigo-100 text-indigo-700" : "bg-slate-100 text-slate-500"
+                          }`}
+                        >
+                          {isChecked ? "Autorizada" : "Sin Acceso"}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-amber-200/60 bg-amber-50/50 p-3 text-xs text-amber-800 space-y-1">
+              <p className="font-bold flex items-center gap-1.5">
+                <ShieldCheck className="h-4 w-4 text-amber-600" /> Aislamiento de Seguridad Multi-Tenant Garantizado:
+              </p>
+              <p>
+                El usuario <strong>{selectedUserForAssign?.email}</strong> solo podrá ver y conmutar entre las sociedades marcadas con ✓. Las demás empresas ajenas de FacturaOS permanecerán 100% invisibles para él.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setShowAssignModal(false)}
+                className="rounded-xl border border-slate-200 px-4 py-2.5 font-semibold text-slate-600 hover:bg-slate-50 text-xs cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={savingAssignment || !selectedUserForAssign}
+                onClick={handleSaveAssignment}
+                className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 text-xs font-bold shadow-md shadow-indigo-600/25 transition-all cursor-pointer disabled:opacity-50"
+              >
+                {savingAssignment ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Check className="h-4 w-4" />
+                )}
+                <span>Guardar Permisos de Sociedades</span>
               </button>
             </div>
           </div>

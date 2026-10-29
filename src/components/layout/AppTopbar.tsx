@@ -9,6 +9,7 @@ import {
   LogOut,
   User,
   Building2,
+  Check,
 } from "lucide-react";
 import { useState } from "react";
 import { Link } from "@tanstack/react-router";
@@ -48,18 +49,64 @@ export function AppTopbar({ onMenu }: { onMenu: () => void }) {
         <Menu className="h-4 w-4" />
       </button>
 
-      {/* Empresa / Negocio en operación */}
-      <div className="hidden items-center gap-2 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium md:flex">
-        <Building2 className="h-4 w-4 text-primary shrink-0" />
-        <span className="font-semibold text-foreground truncate max-w-[200px]">
-          {activeEstablishment?.app_name || activeEstablishment?.name || "FacturaOS"}
-        </span>
-        {activeEstablishment?.legal_id && (
-          <span className="text-[10px] text-muted-foreground font-mono">
-            ({activeEstablishment.legal_id})
+      {/* Empresa / Negocio en operación con selector para clientes con múltiples sociedades */}
+      {establishments.length > 1 ? (
+        <DropdownMenu>
+          <DropdownMenuTrigger className="hidden items-center gap-2 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium hover:bg-muted/80 md:flex cursor-pointer transition-colors outline-none focus:ring-2 focus:ring-primary/20">
+            <Building2 className="h-4 w-4 text-primary shrink-0" />
+            <div className="text-left leading-tight">
+              <span className="font-semibold text-foreground truncate max-w-[170px] block">
+                {activeEstablishment?.app_name || activeEstablishment?.name || "FacturaOS"}
+              </span>
+              {activeEstablishment?.legal_id && (
+                <span className="text-[10px] text-muted-foreground font-mono block">
+                  {activeEstablishment.legal_id}
+                </span>
+              )}
+            </div>
+            <ChevronDown className="h-3.5 w-3.5 text-muted-foreground ml-1 shrink-0" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-64">
+            <DropdownMenuLabel className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+              Tus Sociedades Autorizadas ({establishments.length})
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            {establishments.map((est) => {
+              const isSelected = est.id === activeEstablishment?.id;
+              return (
+                <DropdownMenuItem
+                  key={est.id}
+                  onClick={() => {
+                    setActiveEstablishment(est);
+                    toast.success(`Cambiando a: ${est.app_name || est.name}`);
+                  }}
+                  className={`flex items-center justify-between cursor-pointer py-2 ${
+                    isSelected ? "bg-primary/10 font-bold text-primary" : ""
+                  }`}
+                >
+                  <div className="truncate mr-2">
+                    <p className="text-xs truncate">{est.app_name || est.name}</p>
+                    <p className="text-[10px] text-muted-foreground font-mono">{est.legal_id}</p>
+                  </div>
+                  {isSelected && <Check className="h-4 w-4 text-primary shrink-0" />}
+                </DropdownMenuItem>
+              );
+            })}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ) : (
+        <div className="hidden items-center gap-2 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium md:flex">
+          <Building2 className="h-4 w-4 text-primary shrink-0" />
+          <span className="font-semibold text-foreground truncate max-w-[200px]">
+            {activeEstablishment?.app_name || activeEstablishment?.name || "FacturaOS"}
           </span>
-        )}
-      </div>
+          {activeEstablishment?.legal_id && (
+            <span className="text-[10px] text-muted-foreground font-mono">
+              ({activeEstablishment.legal_id})
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Botón para volver al Centro de Mando (solo si es SuperAdmin) */}
       {isSuperAdmin && (

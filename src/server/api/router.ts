@@ -7,6 +7,7 @@ import {
   handleInvoicePdf,
 } from "./invoices";
 import { handleIdentityRequest } from "./identities";
+import { handleGetAdminUsers, handleAssignEstablishments } from "./admin-users";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -82,6 +83,14 @@ export async function handleApiRouter(request: Request): Promise<Response | null
   else if (pathname.startsWith("/api/v1/identities/") && request.method === "GET") {
     const cedula = pathname.replace("/api/v1/identities/", "").trim();
     response = await handleIdentityRequest(cedula);
+  }
+  // 6. Centro de Mando: Listar Usuarios y Sociedades (GET /api/v1/admin/users)
+  else if (pathname === "/api/v1/admin/users" && request.method === "GET") {
+    response = await handleGetAdminUsers();
+  }
+  // 6b. Centro de Mando: Asignar Sociedades a Usuario (POST /api/v1/admin/users/assign)
+  else if (pathname === "/api/v1/admin/users/assign" && request.method === "POST") {
+    response = await handleAssignEstablishments(request);
   }
   // Ruta no encontrada dentro de /api/v1
   else {

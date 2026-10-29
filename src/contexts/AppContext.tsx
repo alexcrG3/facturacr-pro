@@ -95,8 +95,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const isSuper = role === "super_admin" || role === "contador" || email === "alex@mail.com";
     const estId = overrideEstId !== undefined ? overrideEstId : user.establishment_id;
 
-    // 1. Si es inquilino (no super_admin ni contador), anclarlo ESTRICTAMENTE a su empresa
+    // 0. Si viene en la URL (?est= o ?app=) y el usuario es super_admin o tiene permiso
+    const urlParams = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+    const paramEst = urlParams?.get("est") || urlParams?.get("app");
+    if (paramEst) {
+      const matchParam = estData.find((e: any) => e.code === paramEst || e.id === paramEst);
+      if (matchParam && (isSuper || (authUser as any)?.user_metadata?.allowed_establishment_ids?.includes(matchParam.id) || matchParam.id === estId)) {
+        if (typeof window !== "undefined") {
+          localStorage.setItem("facturaos_active_est_id", matchParam.id);
+        }
+        return matchParam;
+      }
+    }
+
+    // 1. Si es inquilino (no super_admin ni contador), anclarlo ESTRICTAMENTE a sus empresas autorizadas
     if (!isSuper) {
+      const allowedIds: string[] = (authUser as any)?.user_metadata?.allowed_establishment_ids || [];
+      const savedId = typeof window !== "undefined" ? localStorage.getItem("facturaos_active_est_id") : null;
+
+      // Si tiene varias empresas y había una guardada en sesión que está autorizada
+      if (savedId && allowedIds.includes(savedId)) {
+        const directMatch = estData.find((e) => e.id === savedId);
+        if (directMatch) return directMatch;
+      }
+
       // Prioridad 1: establishment_id explícito en la base de datos (profiles.establishment_id)
       if (estId) {
         const directMatch = estData.find((e) => e.id === estId);
@@ -108,7 +130,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      // Prioridad 2: metadata explícita de autenticación
+      // Prioridad 2: primera de las empresas autorizadas
+      if (allowedIds.length > 0) {
+        const firstAllowed = estData.find((e) => allowedIds.includes(e.id));
+        if (firstAllowed) {
+          if (typeof window !== "undefined") {
+            localStorage.setItem("facturaos_active_est_id", firstAllowed.id);
+          }
+          return firstAllowed;
+        }
+      }
+
+      // Prioridad 3: metadata explícita de autenticación
       const metaEstId = (authUser as any)?.user_metadata?.establishment_id;
       if (metaEstId) {
         const directMatch = estData.find((e) => e.id === metaEstId);
@@ -120,7 +153,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      // Prioridad 3: coincidencia exacta por correo de la empresa
+      // Prioridad 4: coincidencia exacta por correo de la empresa
       if (email) {
         const matched = estData.find((e) => e.email?.toLowerCase().trim() === email);
         if (matched) {
@@ -133,8 +166,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
 
     // 2. Si es super_admin (o fallback si no se encontró match de inquilino)
-    const urlParams = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
-    const paramEst = urlParams?.get("est") || urlParams?.get("app");
     const savedId = typeof window !== "undefined" ? localStorage.getItem("facturaos_active_est_id") : null;
 
     const found =
@@ -157,7 +188,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       if (error) throw error;
       if (estData && estData.length > 0) {
-        setEstablishments(estData);
+        const role = overrideRole || user.role;
+        const email = (overrideEmail || user.email || "").toLowerCase().trim();
+        const isSuper = role === "super_admin" || role === "contador" || email === "alex@mail.com";
+        const allowedIds: string[] = (authUser as any)?.user_metadata?.allowed_establishment_ids || [];
+        const userEstId = overrideEstId !== undefined ? overrideEstId : user.establishment_id;
+
+        // Filtrar establecimientos autorizados para el usuario
+        const filteredEsts = isSuper
+          ? estData
+          : estData.filter((e) => {
+              if (allowedIds.length > 0) return allowedIds.includes(e.id);
+              if (userEstId) return e.id === userEstId;
+              if (email) return e.email?.toLowerCase().trim() === email;
+              return false;
+            });
+
+        setEstablishments(filteredEsts.length > 0 ? filteredEsts : estData);
         const resolved = resolveActiveEstablishment(estData, overrideEmail, overrideRole, overrideEstId);
         if (resolved) {
           setActiveEstablishmentState(resolved);
@@ -169,10 +216,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const setActiveEstablishment = (est: EstablishmentRecord) => {
-    // Protección multi-tenant: si NO es super_admin ni contador, no se permite conmutar a otra empresa
+    // Protección multi-tenant: si NO es super_admin ni contador, verificar que esté en sus empresas autorizadas
     const isAuditorOrSuper = isSuperAdmin || user.role === "contador";
-    if (!isAuditorOrSuper && user.establishment_id && est.id !== user.establishment_id) {
-      console.warn("Acceso denegado: el usuario no tiene permisos para conmutar de empresa");
+    const allowedIds: string[] = (authUser as any)?.user_metadata?.allowed_establishment_ids || [];
+    const isAllowed =
+      isAuditorOrSuper ||
+      allowedIds.includes(est.id) ||
+      (user.establishment_id && est.id === user.establishment_id);
+
+    if (!isAllowed) {
+      console.warn("Acceso denegado: el usuario no tiene permisos para conmutar a esta empresa");
       return;
     }
     setActiveEstablishmentState(est);
