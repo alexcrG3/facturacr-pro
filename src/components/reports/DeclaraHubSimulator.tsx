@@ -17,6 +17,8 @@ import {
 import { toast } from "sonner";
 import { formatCRC } from "@/lib/mock-data";
 import { ComprobanteContable } from "@/lib/accounting-reports";
+import { evaluarRiesgoTributario } from "@/lib/hacienda/semaforo-riesgo";
+import { SemaforoRiesgoCard } from "@/components/reports/SemaforoRiesgoCard";
 
 interface DeclaraHubSimulatorProps {
   comprobantes: ComprobanteContable[];
@@ -38,6 +40,14 @@ export function DeclaraHubSimulator({
   onAbrirAceptadorGastos,
 }: DeclaraHubSimulatorProps) {
   const [copiedCasilla, setCopiedCasilla] = useState<string | null>(null);
+
+  // Diagnóstico Preventivo del Semáforo de Riesgo Tributario
+  const diagnosticoRiesgo = useMemo(() => {
+    return evaluarRiesgoTributario({
+      comprobantes,
+      empresaCedula,
+    });
+  }, [comprobantes, empresaCedula]);
 
   // Cálculos agrupados estrictos para las casillas oficiales del D-104 de Tributación
   const metricasD104 = useMemo(() => {
@@ -260,6 +270,12 @@ Generado automáticamente por FacturaOS DeclaraHub.`;
           </div>
         </div>
       </div>
+
+      {/* Semáforo de Riesgo Tributario (Anti-Auditoría Preventiva) */}
+      <SemaforoRiesgoCard
+        diagnostico={diagnosticoRiesgo}
+        onAbrirAceptadorGastos={onAbrirAceptadorGastos}
+      />
 
       {/* Tarjeta Gigante de Liquidación Final */}
       <div

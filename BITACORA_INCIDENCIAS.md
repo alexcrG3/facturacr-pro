@@ -7,6 +7,43 @@
 
 ---
 
+### [2026-10-29 10:15] - Implementación del Semáforo de Riesgo Tributario y Motor "Anti-Auditoría" Preventiva para Hacienda Costa Rica
+* **Módulos Afectados:**
+  - `src/lib/hacienda/semaforo-riesgo.ts` (Nuevo motor de diagnóstico tributario)
+  - `src/components/reports/SemaforoRiesgoCard.tsx` (Nuevo componente visual del semáforo y tarjeta de auditoría)
+  - `src/components/reports/DeclaraHubSimulator.tsx`
+  - `BITACORA_INCIDENCIAS.md`
+* **Incidencia / Necesidad Reportada:**
+  - El usuario solicitó el Punto 4 de la suite premium: **Semáforo de Riesgo Tributario y "Anti-Auditoría"**.
+  - En Costa Rica, el Ministerio de Hacienda utiliza algoritmos automáticos de cruce de datos que detectan inconsistencias fiscales antes de emitir requerimientos o sanciones:
+    1. Compras sin Mensaje Receptor (CCE) acreditadas indebidamente.
+    2. Proporción inusual de notas de crédito y anulaciones (> 15% mensual).
+    3. Márgenes brutos negativos consecutivos sin soporte de inventario o inversión.
+    4. Comprobantes rechazados por Tributación que se siguen sumando al cálculo.
+    5. Terceros que superan el límite de ₡2,500,000 colones sujeto a reporte anual D-151.
+  - La mayoría de contadores y contribuyentes presentan el D-104 a ciegas, enterándose de contingencias meses después a través de multas o traslados de cargos.
+* **Causa Raíz:**
+  - Inexistencia de un motor de auditoría preventiva previo a la presentación de la declaración que evalúe y califique la salud fiscal del período.
+* **Cómo se resolvió:**
+  1. **Motor de Diagnóstico Fiscal (`semaforo-riesgo.ts`):**
+     - Calcula el **Índice de Salud Fiscal (0 a 100 puntos)** y clasifica el nivel de contingencia en:
+       - 🟢 **Riesgo Bajo (85-100 pts):** Salud fiscal óptima, blindado ante Hacienda.
+       - 🟡 **Riesgo Medio (60-84 pts):** Inconsistencias menores que ameritan corrección.
+       - 🔴 **Riesgo Alto (< 60 pts):** Alerta crítica por comprobantes rechazados o gastos sin confirmación CCE.
+     - Detección automática de:
+       - Compras sin Mensaje Receptor CCE y monto de crédito en riesgo.
+       - Porcentaje de notas de crédito sobre facturación bruta.
+       - Desbalance de compras superiores a ventas.
+       - Umbral informativo de ₡2.5M para la declaración D-151.
+  2. **Interfaz del Semáforo (`SemaforoRiesgoCard.tsx` & `DeclaraHubSimulator.tsx`):**
+     - Tarjeta ejecutiva con el velocímetro de puntuación e indicadores rápidos.
+     - Panel desplegable con hallazgos categorizados por severidad (`[CRÍTICO]`, `[ADVERTENCIA]`, `[INFORMATIVO]`).
+     - Señalamiento explícito de la casilla del D-104 afectada (ej. `Casilla [121] / [130]`).
+     - Botón de acción directa para resolver contingencias (ej. abrir directamente el Aceptador CCE).
+* **Prevención:** Revisar el Semáforo de Riesgo en DeclaraHub antes de presentar el D-104 en el portal TRIBU-CR / OVI para garantizar que el índice de salud fiscal se mantenga sobre 90 puntos.
+
+---
+
 ### [2026-10-29 10:05] - Lanzamiento del "Portal del Contador" (Despacho Multi-Empresa & Rol Auditor de Solo Lectura)
 * **Módulos Afectados:**
   - `src/routes/app.contador.tsx` (Nueva pantalla maestra del despacho)
