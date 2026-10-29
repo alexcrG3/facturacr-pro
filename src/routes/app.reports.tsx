@@ -36,6 +36,7 @@ import {
 import { ImportXmlModal } from "@/components/reports/ImportXmlModal";
 import { DeclaraHubSimulator } from "@/components/reports/DeclaraHubSimulator";
 import { BandejaAceptacionGastosModal } from "@/components/reports/BandejaAceptacionGastosModal";
+import { D151ReportModal } from "@/components/reports/D151ReportModal";
 import { formatCRC } from "@/lib/mock-data";
 import { useApp } from "@/contexts/AppContext";
 
@@ -68,6 +69,9 @@ function ReportsPage() {
 
   // Modal de Aceptador Masivo de Gastos ante Hacienda (CCE)
   const [aceptadorModalOpen, setAceptadorModalOpen] = useState(false);
+
+  // Modal de Reporte Informativo Anual D-151 (> ₡2.5M)
+  const [d151ModalOpen, setD151ModalOpen] = useState(false);
 
   // Cargar datos
   const refrescarComprobantes = async () => {
@@ -229,6 +233,13 @@ function ReportsPage() {
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
+              onClick={() => setD151ModalOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-purple-500/30 bg-purple-500/10 px-3 py-2 text-xs font-bold text-purple-700 dark:text-purple-300 hover:bg-purple-500/20 transition-colors cursor-pointer"
+            >
+              <FileSpreadsheet className="h-4 w-4 text-purple-600" /> Borrador D-151 (&gt; ₡2.5M)
+            </button>
+            <button
+              type="button"
               onClick={() => setAceptadorModalOpen(true)}
               className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs font-bold text-emerald-600 hover:bg-emerald-500/20 transition-colors"
             >
@@ -363,6 +374,7 @@ function ReportsPage() {
           periodoHasta={hasta}
           onDescargarExcel={handleDescargarExcel}
           onAbrirAceptadorGastos={() => setAceptadorModalOpen(true)}
+          onAbrirD151={() => setD151ModalOpen(true)}
         />
       ) : (
         <>
@@ -657,6 +669,15 @@ function ReportsPage() {
         onCompletado={() => {
           refrescarComprobantes();
         }}
+      />
+
+      {/* Modal Reporte Informativo Anual D-151 (> ₡2.5M) */}
+      <D151ReportModal
+        isOpen={d151ModalOpen}
+        onClose={() => setD151ModalOpen(false)}
+        comprobantes={comprobantes}
+        empresaNombre={activeEstablishment?.name || "Empresa Actual"}
+        empresaCedula={activeEstablishment?.legal_id || "3101483899"}
       />
     </div>
   );

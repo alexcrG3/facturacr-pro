@@ -28,6 +28,7 @@ interface DeclaraHubSimulatorProps {
   periodoHasta: string;
   onDescargarExcel: () => void;
   onAbrirAceptadorGastos?: () => void;
+  onAbrirD151?: () => void;
 }
 
 export function DeclaraHubSimulator({
@@ -38,6 +39,7 @@ export function DeclaraHubSimulator({
   periodoHasta,
   onDescargarExcel,
   onAbrirAceptadorGastos,
+  onAbrirD151,
 }: DeclaraHubSimulatorProps) {
   const [copiedCasilla, setCopiedCasilla] = useState<string | null>(null);
 
@@ -241,6 +243,18 @@ Generado automáticamente por FacturaOS DeclaraHub.`;
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5">
+            {onAbrirD151 && (
+              <button
+                type="button"
+                onClick={onAbrirD151}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-purple-500/40 bg-purple-500/10 px-3.5 py-2.5 text-xs font-bold text-purple-700 dark:text-purple-300 hover:bg-purple-500/20 transition-all cursor-pointer"
+              >
+                <FileSpreadsheet className="h-4 w-4" /> Borrador D-151
+                <span className="rounded-full bg-purple-500/20 px-1.5 py-0.2 text-[10px] font-black uppercase">
+                  &gt; ₡2.5M
+                </span>
+              </button>
+            )}
             {onAbrirAceptadorGastos && (
               <button
                 type="button"

@@ -7,6 +7,37 @@
 
 ---
 
+### [2026-10-29 10:25] - Implementación del Módulo Anual D-151 Automatizado (Clientes y Proveedores > ₡2,500,000)
+* **Módulos Afectados:**
+  - `src/lib/hacienda/d151-generator.ts` (Nuevo motor de consolidación anual, exportador Excel y CSV DGT)
+  - `src/components/reports/D151ReportModal.tsx` (Nuevo modal interactivo con filtros de año y umbral)
+  - `src/components/reports/DeclaraHubSimulator.tsx`
+  - `src/routes/app.reports.tsx`
+  - `BITACORA_INCIDENCIAS.md`
+* **Incidencia / Necesidad Reportada:**
+  - El usuario solicitó el Punto 5 de la suite premium: **Reporte Anual D-151 Automatizado**.
+  - Según la Resolución DGT-R-42-2015 del Ministerio de Hacienda de Costa Rica, todo contribuyente debe presentar anualmente la **Declaración Informativa D-151 (Clientes, Proveedores y Gastos Específicos)** detallando a todos los terceros con los que mantuvo transacciones acumuladas en el año fiscal superiores a **₡2,500,000 colones** (o ₡50,000 para alquileres/servicios profesionales específicos).
+  - Los contadores pasan días o semanas descargando facturas dispersas, ordenándolas por cédula en Excel y sumando acumulados manualmente, arriesgando multas por omisión o presentación inexacta del artículo 83 del Código de Normas y Procedimientos Tributarios.
+* **Causa Raíz:**
+  - Falta de un motor automatizado que agrupe en un clic las compras y ventas del año por número de identificación y genere el formato oficial requerido por Tributación.
+* **Cómo se resolvió:**
+  1. **Motor de Consolidación Anual D-151 (`d151-generator.ts`):**
+     - Agrupa automáticamente todas las facturas de venta y comprobantes de compra del año fiscal seleccionado.
+     - Clasificación inteligente de identificación (01 Física, 02 Jurídica, 03 DIMEX) y desglose de mercaderías versus servicios.
+     - Filtro instantáneo de terceros que igualan o superan el umbral legal de ₡2.5M (o filtro configurable a ₡50,000).
+     - Exportador oficial a Microsoft Excel (`.xlsx`) estructurado con 3 hojas: Resumen Ejecutivo, Proveedores (Código C) y Clientes (Código V).
+     - Generador de archivo CSV en formato plano delimitado para carga masiva en el software de Tributación.
+  2. **Interfaz Interactiva (`D151ReportModal.tsx`):**
+     - Selector de año fiscal (2026, 2025, 2024) y selector de umbral.
+     - Pestañas interactivas para auditar proveedores vs clientes obligados.
+     - Tabla con buscador rápido por cédula o razón social.
+     - Botón de copiado de resumen formateado para WhatsApp o correo con el contador.
+  3. **Integración en DeclaraHub (`DeclaraHubSimulator.tsx` & `app.reports.tsx`):**
+     - Botón directo `Borrador D-151 (> ₡2.5M)` en la barra superior de reportes y en la cabecera de DeclaraHub.
+* **Prevención:** Generar y cotejar el borrador D-151 antes del cierre fiscal de cada año para evitar inconsistencias con las declaraciones mensuales D-104 acumuladas.
+
+---
+
 ### [2026-10-29 10:15] - Implementación del Semáforo de Riesgo Tributario y Motor "Anti-Auditoría" Preventiva para Hacienda Costa Rica
 * **Módulos Afectados:**
   - `src/lib/hacienda/semaforo-riesgo.ts` (Nuevo motor de diagnóstico tributario)
