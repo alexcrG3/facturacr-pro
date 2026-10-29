@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { toast } from "sonner";
 import {
   Building2,
@@ -37,12 +37,16 @@ import {
   Sparkles,
   Download,
   Clock,
+  Receipt,
+  FileSpreadsheet,
+  Landmark,
 } from "lucide-react";
 import { PageHeader } from "@/components/common/PageHeader";
 import { company } from "@/lib/mock-data";
 import { probarConexionHacienda, AmbienteHacienda } from "@/lib/hacienda";
 import { supabase, type Role } from "@/lib/supabase";
 import { useApp, roleLabel } from "@/contexts/AppContext";
+import { InvoiceRenderer, TEMPLATE_OPTIONS, type InvoiceTemplateId } from "@/components/invoices/templates/InvoiceRenderer";
 
 export const Route = createFileRoute("/app/settings")({
   component: SettingsPage,
@@ -114,6 +118,37 @@ function SettingsPage() {
       ? `${activeEstablishment.economic_activity_code} - ${activityDescriptions[activeEstablishment.economic_activity_code] || "Actividad Comercial"}`
       : ""
   );
+
+  // Estado Logo, Bancos, Plantillas de Factura y Vista Previa
+  const [companyLogo, setCompanyLogo] = useState<string>(() => {
+    if (typeof window !== "undefined" && activeEstablishment?.id) {
+      return localStorage.getItem(`facturaos_company_logo_${activeEstablishment.id}`) || "";
+    }
+    return "";
+  });
+  const [bankAccounts, setBankAccounts] = useState<string>(() => {
+    if (typeof window !== "undefined" && activeEstablishment?.id) {
+      return localStorage.getItem(`facturaos_bank_accounts_${activeEstablishment.id}`) || "";
+    }
+    return "";
+  });
+  const [sinpePhone, setSinpePhone] = useState<string>(() => {
+    if (typeof window !== "undefined" && activeEstablishment?.id) {
+      return localStorage.getItem(`facturaos_sinpe_phone_${activeEstablishment.id}`) || "";
+    }
+    return "";
+  });
+  const [invoiceTemplate, setInvoiceTemplate] = useState<InvoiceTemplateId>(() => {
+    if (typeof window !== "undefined" && activeEstablishment?.id) {
+      const saved = localStorage.getItem(`facturaos_invoice_template_${activeEstablishment.id}`) as InvoiceTemplateId;
+      if (saved && ["corporativa", "moderna", "clasica", "termico"].includes(saved)) {
+        return saved;
+      }
+    }
+    return "corporativa";
+  });
+  const [showPreviewModal, setShowPreviewModal] = useState(false);
+  const logoInputRef = useRef<HTMLInputElement | null>(null);
 
   // Estado Hacienda
   const cleanCedula = (activeEstablishment?.legal_id || "").replace(/\D/g, "");
@@ -447,6 +482,29 @@ function SettingsPage() {
           },
         ]);
       }
+
+      setCompanyName(activeEstablishment.name || activeEstablishment.app_name || "");
+      setCompanyLegalId(activeEstablishment.legal_id || "");
+      setCompanyEmail(activeEstablishment.email || "");
+      setCompanyPhone(activeEstablishment.phone || "");
+      setCompanyAddress(activeEstablishment.address || "San José, Costa Rica");
+      setCompanyActivity(
+        activeEstablishment.economic_activity_code
+          ? `${activeEstablishment.economic_activity_code} - ${activityDescriptions[activeEstablishment.economic_activity_code] || "Actividad Comercial"}`
+          : ""
+      );
+
+      const savedLogo = localStorage.getItem(`facturaos_company_logo_${estId}`) || "";
+      setCompanyLogo(savedLogo);
+
+      const savedBanks = localStorage.getItem(`facturaos_bank_accounts_${estId}`) || "";
+      setBankAccounts(savedBanks);
+
+      const savedSinpe = localStorage.getItem(`facturaos_sinpe_phone_${estId}`) || "";
+      setSinpePhone(savedSinpe);
+
+      const savedTemplate = (localStorage.getItem(`facturaos_invoice_template_${estId}`) || "corporativa") as InvoiceTemplateId;
+      setInvoiceTemplate(savedTemplate);
     } catch {
       // Ignorar error de parsing
     }
@@ -665,6 +723,36 @@ function SettingsPage() {
     }
   };
 
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error("El logotipo no debe superar los 2MB de tamaño.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const base64 = event.target?.result as string;
+      setCompanyLogo(base64);
+      if (activeEstablishment?.id) {
+        localStorage.setItem(`facturaos_company_logo_${activeEstablishment.id}`, base64);
+      }
+      toast.success(`¡Logotipo cargado con éxito para ${companyName || "la empresa"}!`);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleRemoveLogo = () => {
+    setCompanyLogo("");
+    if (activeEstablishment?.id) {
+      localStorage.removeItem(`facturaos_company_logo_${activeEstablishment.id}`);
+    }
+    if (logoInputRef.current) {
+      logoInputRef.current.value = "";
+    }
+    toast.info("Logotipo eliminado.");
+  };
+
   // Guardar Empresa
   const handleSaveCompany = async () => {
     if (!activeEstablishment?.id) {
@@ -672,6 +760,7 @@ function SettingsPage() {
       return;
     }
 
+    const estId = activeEstablishment.id;
     const data = {
       name: companyName,
       legalId: companyLegalId,
@@ -679,8 +768,19 @@ function SettingsPage() {
       phone: companyPhone,
       address: companyAddress,
       activity: companyActivity,
+      bankAccounts,
+      sinpePhone,
+      invoiceTemplate,
     };
-    localStorage.setItem(`facturacr_company_profile_${activeEstablishment.id}`, JSON.stringify(data));
+    localStorage.setItem(`facturacr_company_profile_${estId}`, JSON.stringify(data));
+    localStorage.setItem(`facturaos_bank_accounts_${estId}`, bankAccounts);
+    localStorage.setItem(`facturaos_sinpe_phone_${estId}`, sinpePhone);
+    localStorage.setItem(`facturaos_invoice_template_${estId}`, invoiceTemplate);
+    if (companyLogo) {
+      localStorage.setItem(`facturaos_company_logo_${estId}`, companyLogo);
+    } else {
+      localStorage.removeItem(`facturaos_company_logo_${estId}`);
+    }
 
     // Guardar en Supabase PostgreSQL en la tabla establishments
     try {
@@ -709,10 +809,10 @@ function SettingsPage() {
       });
       await loadEstablishments();
 
-      toast.success(`¡Datos de "${companyName.trim()}" actualizados con éxito en la base de datos!`);
+      toast.success(`¡Datos y diseño de "${companyName.trim()}" guardados con éxito!`);
     } catch (e: any) {
       console.error("Error guardando empresa en Supabase:", e);
-      toast.error("Error al guardar datos de la empresa: " + (e?.message || ""));
+      toast.success(`¡Datos y diseño de "${companyName.trim()}" actualizados localmente!`);
     }
   };
 
@@ -2062,114 +2162,400 @@ print(response.json())`}
           )}
 
           {active === "empresa" && (
-            <div className="space-y-6">
-              <div>
-                <h2 className="text-lg font-semibold">Datos de la Empresa / Emisor</h2>
-                <p className="text-sm text-muted-foreground">
-                  Información fiscal y comercial que aparecerá en el encabezado de todas tus facturas, notas de crédito y tiquetes electrónicos.
-                </p>
+            <div className="space-y-8">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border pb-4">
+                <div>
+                  <h2 className="text-lg font-bold flex items-center gap-2">
+                    <Building2 className="h-5 w-5 text-primary" />
+                    Datos de la Empresa / Emisor
+                  </h2>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Información fiscal, logotipo y formato visual autorizado que aparecerá en tus facturas y tiquetes ante Hacienda.
+                  </p>
+                </div>
+                {activeEstablishment && (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-primary/10 text-primary border border-primary/20 shrink-0 self-start sm:self-auto">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    {activeEstablishment.name || activeEstablishment.app_name}
+                  </span>
+                )}
               </div>
 
-              <div className="flex items-center gap-4 rounded-xl border border-dashed border-border p-4 bg-muted/30">
-                <div className="grid h-16 w-16 place-items-center rounded-xl bg-primary/10 text-primary border border-primary/20">
-                  <Building2 className="h-8 w-8" />
+              {/* ─── LOGOTIPO DE LA EMPRESA ─── */}
+              <div className="rounded-2xl border border-border bg-card p-5 shadow-xs space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-sm font-bold flex items-center gap-2">
+                      <Sparkles className="h-4 w-4 text-amber-500" />
+                      Logotipo Oficial del Emisor
+                    </h3>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Este logotipo se adaptará automáticamente a la cabecera de tus facturas PDF y tiquetes térmicos.
+                    </p>
+                  </div>
                 </div>
-                <div className="flex-1">
-                  <p className="text-sm font-semibold">Logotipo de la Empresa</p>
-                  <p className="text-xs text-muted-foreground">Formato PNG, JPG o SVG (máx. 2MB). Se incluirá en la representación gráfica (PDF).</p>
+
+                <input
+                  type="file"
+                  ref={logoInputRef}
+                  accept="image/png,image/jpeg,image/svg+xml,image/webp"
+                  onChange={handleLogoUpload}
+                  className="hidden"
+                />
+
+                <div className="flex flex-col sm:flex-row items-center gap-5 rounded-xl border border-dashed border-border p-4 bg-muted/20">
+                  {companyLogo ? (
+                    <div className="relative group shrink-0">
+                      <div className="h-20 w-36 rounded-xl border border-slate-200 bg-white p-2 flex items-center justify-center shadow-sm">
+                        <img
+                          src={companyLogo}
+                          alt="Logotipo de la empresa"
+                          className="max-h-full max-w-full object-contain"
+                        />
+                      </div>
+                      <span className="absolute -top-2 -right-2 bg-emerald-500 text-white p-1 rounded-full shadow-xs">
+                        <Check className="h-3 w-3" />
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="grid h-20 w-20 place-items-center rounded-2xl bg-muted text-muted-foreground border border-border shrink-0">
+                      <Building2 className="h-9 w-9 opacity-50" />
+                    </div>
+                  )}
+
+                  <div className="flex-1 text-center sm:text-left space-y-1">
+                    <p className="text-sm font-semibold">
+                      {companyLogo ? "Logotipo activo y configurado" : "Aún no has subido un logotipo para esta sociedad"}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Formatos recomendados: PNG o SVG con fondo transparente (máximo 2 MB).
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => logoInputRef.current?.click()}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3.5 py-2 text-xs font-semibold hover:bg-muted transition-colors shadow-xs"
+                    >
+                      <Upload className="h-3.5 w-3.5" />
+                      {companyLogo ? "Cambiar Logo" : "Subir Logotipo"}
+                    </button>
+                    {companyLogo && (
+                      <button
+                        type="button"
+                        onClick={handleRemoveLogo}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-destructive/30 bg-destructive/10 text-destructive px-3 py-2 text-xs font-semibold hover:bg-destructive/20 transition-colors"
+                        title="Eliminar este logotipo"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
                 </div>
+              </div>
+
+              {/* ─── DATOS FISCALES DEL EMISOR ─── */}
+              <div className="rounded-2xl border border-border bg-card p-5 shadow-xs space-y-4">
+                <h3 className="text-sm font-bold flex items-center gap-2">
+                  <ShieldCheck className="h-4 w-4 text-primary" />
+                  Identificación Tributaria ante Hacienda
+                </h3>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div>
+                    <label className="mb-1.5 block text-xs font-semibold text-foreground">
+                      Razón Social / Nombre Legal del Contribuyente *
+                    </label>
+                    <input
+                      type="text"
+                      value={companyName}
+                      onChange={(e) => setCompanyName(e.target.value)}
+                      placeholder="Ej: GRUPO G TRES COMERCIALIZADORA INTERAMERICANA S.A."
+                      className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/20 font-medium"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1.5 block text-xs font-semibold text-foreground">
+                      Cédula Jurídica / Física (Sin guiones) *
+                    </label>
+                    <input
+                      type="text"
+                      value={companyLegalId}
+                      onChange={(e) => setCompanyLegalId(e.target.value)}
+                      placeholder="Ej: 3-101-483899"
+                      className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/20 font-mono font-medium"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1.5 block text-xs font-semibold text-foreground">
+                      Correo Electrónico Oficial de Facturación *
+                    </label>
+                    <input
+                      type="email"
+                      value={companyEmail}
+                      onChange={(e) => setCompanyEmail(e.target.value)}
+                      placeholder="facturacion@tuempresa.cr"
+                      className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/20"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1.5 block text-xs font-semibold text-foreground">
+                      Teléfono de Contacto Comercial
+                    </label>
+                    <input
+                      type="text"
+                      value={companyPhone}
+                      onChange={(e) => setCompanyPhone(e.target.value)}
+                      placeholder="+506 2222-0000 / 8888-8888"
+                      className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/20"
+                    />
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label className="mb-1.5 block text-xs font-semibold text-foreground">
+                      Dirección Física / Ubicación Comercial Registrada
+                    </label>
+                    <input
+                      type="text"
+                      value={companyAddress}
+                      onChange={(e) => setCompanyAddress(e.target.value)}
+                      placeholder="Provincia, Cantón, Distrito, Señas particulares"
+                      className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/20"
+                    />
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label className="mb-1.5 block text-xs font-semibold text-foreground">
+                      Actividad Económica Principal Registrada en Hacienda (Código ATV)
+                    </label>
+                    <input
+                      type="text"
+                      value={companyActivity}
+                      onChange={(e) => setCompanyActivity(e.target.value)}
+                      placeholder="Ej: 620901 - Otras actividades de tecnología de información"
+                      className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/20"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* ─── CUENTAS BANCARIAS Y SINPE MÓVIL ─── */}
+              <div className="rounded-2xl border border-border bg-card p-5 shadow-xs space-y-4">
+                <div>
+                  <h3 className="text-sm font-bold flex items-center gap-2">
+                    <Landmark className="h-4 w-4 text-emerald-600" />
+                    Información Bancaria y SINPE Móvil (Pie de Factura)
+                  </h3>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Permite a tus clientes realizar depósitos y transferencias rápidas mostrando tus cuentas oficiales en el documento impreso.
+                  </p>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="md:col-span-2">
+                    <label className="mb-1.5 block text-xs font-semibold text-foreground">
+                      Cuentas Bancarias / Números IBAN (Colones y Dólares)
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={bankAccounts}
+                      onChange={(e) => setBankAccounts(e.target.value)}
+                      placeholder={"BAC San José IBAN: CR05010200009876543210 (CRC)\nBanco Nacional IBAN: CR23015100012345678901 (USD)"}
+                      className="w-full rounded-lg border border-border bg-background p-3 text-xs focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/20 font-mono"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1.5 block text-xs font-semibold text-foreground">
+                      Teléfono SINPE Móvil de la Empresa
+                    </label>
+                    <input
+                      type="text"
+                      value={sinpePhone}
+                      onChange={(e) => setSinpePhone(e.target.value)}
+                      placeholder="8888-8888 (A nombre de GRUPO G TRES S.A.)"
+                      className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/20 font-medium"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* ─── SELECTOR DE PLANTILLAS DE DISEÑO ─── */}
+              <div className="rounded-2xl border border-border bg-card p-5 shadow-xs space-y-4">
+                <div>
+                  <h3 className="text-sm font-bold flex items-center gap-2">
+                    <FileSpreadsheet className="h-4 w-4 text-primary" />
+                    Diseño de Facturas y Tiquetes (4 Plantillas Profesionales)
+                  </h3>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Selecciona el modelo visual que representará a tu empresa. Todas cumplen con el sello oficial de protección y caben en 1 sola página.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                  {TEMPLATE_OPTIONS.map((tpl) => {
+                    const Icon = tpl.icon;
+                    const isSelected = invoiceTemplate === tpl.id;
+
+                    return (
+                      <div
+                        key={tpl.id}
+                        onClick={() => setInvoiceTemplate(tpl.id)}
+                        className={`cursor-pointer rounded-xl border p-4 transition-all relative flex flex-col justify-between ${
+                          isSelected
+                            ? "border-primary bg-primary/5 ring-2 ring-primary/20 shadow-sm"
+                            : "border-border bg-background hover:border-border hover:bg-muted/40"
+                        }`}
+                      >
+                        <div>
+                          <div className="flex items-center justify-between mb-2">
+                            <div className={`p-2 rounded-lg ${isSelected ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
+                              <Icon className="h-5 w-5" />
+                            </div>
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                              isSelected ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+                            }`}>
+                              {tpl.badge}
+                            </span>
+                          </div>
+                          <h4 className="text-sm font-bold text-foreground">{tpl.name}</h4>
+                          <p className="text-[11px] text-muted-foreground mt-1 leading-snug">{tpl.desc}</p>
+                        </div>
+
+                        <div className="mt-4 pt-2 border-t border-border/50 flex items-center justify-between text-xs font-semibold">
+                          <span className={isSelected ? "text-primary" : "text-muted-foreground"}>
+                            {isSelected ? "Seleccionada" : "Hacer clic para elegir"}
+                          </span>
+                          {isSelected && <Check className="h-4 w-4 text-primary" />}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* ─── BOTONES DE ACCIÓN ─── */}
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-border pt-4">
                 <button
                   type="button"
-                  onClick={() => toast.info("Subida de logo lista. Selecciona un archivo.")}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-2 text-xs font-medium hover:bg-muted transition-colors shadow-sm"
+                  onClick={() => setShowPreviewModal(true)}
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-lg border border-primary/30 bg-primary/10 text-primary px-4 py-2.5 text-xs font-bold hover:bg-primary/20 transition-colors shadow-xs"
                 >
-                  <Upload className="h-3.5 w-3.5" /> Subir Logo
+                  <Eye className="h-4 w-4" />
+                  Ver Vista Previa en Vivo (Factura & Tiquete)
                 </button>
-              </div>
 
-              <div className="grid gap-4 md:grid-cols-2">
-                <div>
-                  <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
-                    Razón Social / Nombre Comercial
-                  </label>
-                  <input
-                    type="text"
-                    value={companyName}
-                    onChange={(e) => setCompanyName(e.target.value)}
-                    className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/20 font-medium"
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
-                    Cédula Jurídica / Física del Emisor
-                  </label>
-                  <input
-                    type="text"
-                    value={companyLegalId}
-                    onChange={(e) => setCompanyLegalId(e.target.value)}
-                    className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/20 font-mono"
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
-                    Correo Electrónico de Facturación
-                  </label>
-                  <input
-                    type="email"
-                    value={companyEmail}
-                    onChange={(e) => setCompanyEmail(e.target.value)}
-                    className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/20"
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
-                    Teléfono Principal de Contacto
-                  </label>
-                  <input
-                    type="text"
-                    value={companyPhone}
-                    onChange={(e) => setCompanyPhone(e.target.value)}
-                    className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/20"
-                  />
-                </div>
-
-                <div className="md:col-span-2">
-                  <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
-                    Dirección Física / Ubicación Comercial
-                  </label>
-                  <input
-                    type="text"
-                    value={companyAddress}
-                    onChange={(e) => setCompanyAddress(e.target.value)}
-                    className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/20"
-                  />
-                </div>
-
-                <div className="md:col-span-2">
-                  <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
-                    Actividad Económica Principal Registrada en Hacienda
-                  </label>
-                  <input
-                    type="text"
-                    value={companyActivity}
-                    onChange={(e) => setCompanyActivity(e.target.value)}
-                    className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/20"
-                  />
-                </div>
-              </div>
-
-              <div className="flex justify-end border-t border-border pt-4">
                 <button
                   type="button"
                   onClick={handleSaveCompany}
-                  className="inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-2 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90 transition-colors"
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-6 py-2.5 text-sm font-bold text-primary-foreground shadow-sm hover:bg-primary/90 transition-colors"
                 >
-                  <Check className="h-4 w-4" /> Guardar Datos de la Empresa
+                  <Check className="h-4 w-4" />
+                  Guardar Datos y Diseño de la Empresa
                 </button>
               </div>
+
+              {/* ─── MODAL DE VISTA PREVIA FLOTANTE ─── */}
+              {showPreviewModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
+                  <div className="relative w-full max-w-4xl bg-background rounded-2xl border border-border shadow-2xl p-6 space-y-4 max-h-[92vh] overflow-y-auto">
+                    <div className="flex items-center justify-between border-b border-border pb-3">
+                      <div>
+                        <h3 className="text-base font-bold flex items-center gap-2">
+                          <Eye className="h-5 w-5 text-primary" />
+                          Vista Previa de Comprobante Oficial
+                        </h3>
+                        <p className="text-xs text-muted-foreground">
+                          Así se verá la factura emitida para {companyName || "tu empresa"} con su logotipo, sello oficial y cuentas.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowPreviewModal(false)}
+                        className="rounded-lg p-2 text-muted-foreground hover:bg-muted hover:text-foreground"
+                      >
+                        <X className="h-5 w-5" />
+                      </button>
+                    </div>
+
+                    <div className="bg-muted/10 p-2 rounded-xl">
+                      <InvoiceRenderer
+                        invoice={{
+                          number: "00100001010000000042",
+                          date: new Date().toISOString(),
+                          total: 113000,
+                        }}
+                        emisor={{
+                          name: companyName || activeEstablishment?.name || "GRUPO G TRES COMERCIALIZADORA INTERAMERICANA S.A.",
+                          legalId: companyLegalId || activeEstablishment?.legal_id || "3-101-483899",
+                          email: companyEmail || activeEstablishment?.email || "facturacion@grupog3.cr",
+                          phone: companyPhone || "+506 2222-0000",
+                          address: companyAddress || "San José, Costa Rica",
+                          activityCode: companyActivity.split("-")[0].trim() || "620901",
+                          logoUrl: companyLogo || undefined,
+                          bankAccounts: bankAccounts || undefined,
+                          sinpePhone: sinpePhone || undefined,
+                        }}
+                        client={{
+                          name: "CLIENTE CORPORATIVO EJEMPLO S.A.",
+                          legalId: "3-101-778899",
+                          email: "contabilidad@clienteejemplo.cr",
+                          phone: "+506 2525-0000",
+                        }}
+                        consecutivo="00100001010000000042"
+                        clave="5062908260031014838990000100001010000000042198765432"
+                        docTypeStr="01"
+                        docTypeName="FACTURA ELECTRÓNICA"
+                        items={[
+                          {
+                            description: "Servicios de Consultoría y Desarrollo de Software",
+                            quantity: 1,
+                            unitPrice: 100000,
+                            total: 100000,
+                            cabys: "8314100000000",
+                            ivaRate: 13,
+                          },
+                        ]}
+                        subtotal={100000}
+                        impuesto={13000}
+                        total={113000}
+                        currency="CRC"
+                        condicionVenta="Contado"
+                        medioPago="Transferencia Bancaria / SINPE"
+                        initialTemplate={invoiceTemplate}
+                        establishmentId={activeEstablishment?.id}
+                        showSelector={true}
+                      />
+                    </div>
+
+                    <div className="flex justify-between items-center pt-2 border-t border-border">
+                      <span className="text-xs text-muted-foreground">
+                        Puedes cambiar de plantilla en tiempo real usando los botones superiores.
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => window.print()}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold hover:bg-muted"
+                        >
+                          <Receipt className="h-3.5 w-3.5" /> Probar Impresión
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setShowPreviewModal(false)}
+                          className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90"
+                        >
+                          Listo
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

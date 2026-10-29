@@ -383,17 +383,25 @@ function InvoicesPage() {
                           </Link>
                         )}
                         {(inv.clave || inv.haciendaKey) && (
-                          <a
-                            href={`/api/v1/invoices/${inv.clave || inv.haciendaKey}/pdf`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            onClick={(e) => e.stopPropagation()}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedDossierInvoice({
+                                ...inv,
+                                clave: inv.clave || inv.haciendaKey,
+                                haciendaKey: inv.haciendaKey || inv.clave,
+                                items: inv.items,
+                                appName: inv.appName,
+                                autoOpenPdf: true,
+                              });
+                            }}
                             className="inline-flex items-center gap-1 rounded-md bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 px-2.5 py-1 text-xs font-semibold transition-colors shadow-xs"
                             title="Ver / Imprimir Factura o Tiquete en PDF Oficial con QR"
                           >
                             <Eye className="h-3.5 w-3.5" />
                             Ver PDF
-                          </a>
+                          </button>
                         )}
                         <button
                           onClick={(e) => {

@@ -28,6 +28,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { toast } from "sonner";
 import { formatCRC } from "@/lib/mock-data";
 import { useApp } from "@/contexts/AppContext";
+import { InvoiceRenderer } from "./templates/InvoiceRenderer";
 import {
   construirXmlHacienda,
   firmarXmlHacienda,
@@ -91,7 +92,17 @@ export function InvoiceDossierModal({
     type: "xml" | "pdf";
     content: string;
     filename: string;
-  } | null>(null);
+  } | null>(() => {
+    if ((invoice as any)?.autoOpenPdf) {
+      return {
+        title: `Representación Gráfica: ${invoice?.number}`,
+        type: "pdf",
+        content: "",
+        filename: `${invoice?.number}.pdf`,
+      };
+    }
+    return null;
+  });
   const [isConsulting, setIsConsulting] = useState(false);
   const [isUploadingDrive, setIsUploadingDrive] = useState(false);
   const [isDriveSaved, setIsDriveSaved] = useState(false);
@@ -103,7 +114,15 @@ export function InvoiceDossierModal({
     if (invoice?.status) {
       setCurrentStatus(normalizeDossierStatus(invoice.status));
     }
-  }, [invoice?.status]);
+    if ((invoice as any)?.autoOpenPdf) {
+      setSelectedFilePreview({
+        title: `Representación Gráfica: ${invoice?.number}`,
+        type: "pdf",
+        content: "",
+        filename: `${invoice?.number}.pdf`,
+      });
+    }
+  }, [invoice?.status, (invoice as any)?.autoOpenPdf]);
 
   const handleSaveToGoogleDrive = () => {
     setIsUploadingDrive(true);
@@ -166,6 +185,12 @@ export function InvoiceDossierModal({
   const invoiceItems = Array.isArray((invoice as any).items) && (invoice as any).items.length > 0
     ? (invoice as any).items
     : null;
+
+  const estId = activeEstablishment?.id;
+  const savedLogo = estId && typeof window !== "undefined" ? localStorage.getItem(`facturaos_company_logo_${estId}`) : null;
+  const savedBank = estId && typeof window !== "undefined" ? localStorage.getItem(`facturaos_bank_accounts_${estId}`) : null;
+  const savedSinpe = estId && typeof window !== "undefined" ? localStorage.getItem(`facturaos_sinpe_phone_${estId}`) : null;
+  const savedTemplate = (estId && typeof window !== "undefined" ? localStorage.getItem(`facturaos_invoice_template_${estId}`) : null) as any;
 
   // Generar archivos del expediente
   const xmlOriginal =
@@ -446,15 +471,21 @@ export function InvoiceDossierModal({
               <Archive className="h-3.5 w-3.5 text-primary" /> Descargar Paquete (.zip)
             </button>
             {clave && (
-              <a
-                href={`/api/v1/invoices/${clave}/pdf`}
-                target="_blank"
-                rel="noopener noreferrer"
+              <button
+                type="button"
+                onClick={() =>
+                  setSelectedFilePreview({
+                    title: `Representación Gráfica: ${invoice.number}`,
+                    type: "pdf",
+                    content: "",
+                    filename: `${invoice.number}.pdf`,
+                  })
+                }
                 className="inline-flex items-center gap-1.5 rounded-lg bg-primary text-primary-foreground px-3 py-1.5 text-xs font-semibold hover:bg-primary/90 transition-colors shadow-xs"
-                title="Ver e imprimir PDF oficial en pestaña nueva"
+                title="Ver e imprimir representación gráfica oficial con QR"
               >
                 <Eye className="h-3.5 w-3.5" /> Ver PDF Oficial
-              </a>
+              </button>
             )}
             <button
               onClick={onClose}
@@ -1021,214 +1052,66 @@ export function InvoiceDossierModal({
                 {selectedFilePreview.type === "xml" ? (
                   <pre className="whitespace-pre-wrap break-all">{selectedFilePreview.content}</pre>
                 ) : (
-                  <div className="mx-auto max-w-2xl bg-card border border-border rounded-xl p-8 shadow-sm text-foreground space-y-6 print:m-0 print:p-0 print:border-none print:shadow-none">
-                    {/* Header del documento */}
-                    <div className="flex flex-col sm:flex-row justify-between items-start gap-4 border-b border-border pb-6">
-                      <div className="space-y-1">
-                        <div className="inline-flex items-center gap-2">
-                          <Building2 className="h-6 w-6 text-primary" />
-                          <h2 className="text-xl font-bold tracking-tight">{emisorNombre}</h2>
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                          Cédula Jurídica: <span className="font-mono font-medium text-foreground">{emisorCedula}</span>
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          Actividad Económica: <span className="font-medium text-foreground">{codigoActividad}</span>
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          Correo: <span className="font-medium text-foreground">{emisorCorreo}</span>
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          Costa Rica
-                        </p>
-                      </div>
-
-                      <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 text-right space-y-1 min-w-[240px]">
-                        <span className="text-[11px] font-bold uppercase tracking-wider text-primary">
-                          {docTypeStr === "01"
-                            ? "FACTURA ELECTRÓNICA"
-                            : docTypeStr === "04"
-                              ? "TIQUETE ELECTRÓNICO"
-                              : docTypeStr === "03"
-                                ? "NOTA DE CRÉDITO"
-                                : "NOTA DE DÉBITO"}
-                        </span>
-                        <div className="text-lg font-mono font-bold text-foreground">
-                          {invoice.number}
-                        </div>
-                        <div className="text-[10px] text-muted-foreground font-mono">
-                          Consecutivo: {consecutivo}
-                        </div>
-                        <div className="text-[10px] text-muted-foreground">
-                          Fecha: <span className="font-medium text-foreground">{new Date(invoice.date || Date.now()).toLocaleString("es-CR")}</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Clave de 50 dígitos banner */}
-                    <div className="rounded-lg border border-border bg-muted/20 p-3">
-                      <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground block mb-0.5">
-                        Clave Numérica Oficial de Hacienda (50 dígitos):
-                      </span>
-                      <span className="font-mono text-xs font-semibold text-primary break-all">
-                        {clave}
-                      </span>
-                    </div>
-
-                    {/* Datos del Receptor */}
-                    <div className="rounded-lg border border-border p-4 space-y-2 bg-background/50">
-                      <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground block">
-                        Datos del Cliente (Receptor)
-                      </span>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                        <div>
-                          <span className="text-muted-foreground">Nombre / Razón Social: </span>
-                          <span className="font-semibold text-foreground">{clientName}</span>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground">Identificación: </span>
-                          <span className="font-mono font-semibold text-foreground">{clientLegalId || "Consumidor Final"}</span>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground">Correo de Facturación: </span>
-                          <span className="font-medium text-foreground">{clientEmail}</span>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground">Condición de Venta: </span>
-                          <span className="font-medium text-foreground">Contado (Transferencia / Efectivo)</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Información de Referencia (Obligatorio en Notas de Crédito / Débito según Hacienda v4.4) */}
-                    {(invoice.type === "NC" || invoice.type === "ND") && (
-                      <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3.5 space-y-1.5 text-xs">
-                        <div className="flex items-center justify-between">
-                          <span className="font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
-                            <FileText className="h-3.5 w-3.5" /> Documento de Referencia (Normativa Hacienda v4.4)
-                          </span>
-                          <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-amber-600 dark:text-amber-400">
-                            Código 01: Anula Documento de Referencia
-                          </span>
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 text-[11px]">
-                          <div>
-                            <span className="text-muted-foreground block text-[10px]">Clave Numérica de Factura Anulada (50 dígitos):</span>
-                            <span className="font-mono font-medium text-foreground break-all">
-                              50629082600310148389900001000020100000000051987654321
-                            </span>
-                          </div>
-                          <div>
-                            <span className="text-muted-foreground block text-[10px]">Razón / Motivo de Anulación:</span>
-                            <span className="font-medium text-foreground">
-                              Anulación de comprobante FE-000005 por corrección de servicios.
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Tabla de Detalle */}
-                    <div className="overflow-hidden rounded-lg border border-border">
-                      <table className="w-full text-left text-xs">
-                        <thead className="bg-muted/40 border-b border-border text-muted-foreground font-semibold">
-                          <tr>
-                            <th className="p-2.5">CABYS</th>
-                            <th className="p-2.5">Descripción</th>
-                            <th className="p-2.5 text-center">Cant.</th>
-                            <th className="p-2.5 text-right">Precio Unit.</th>
-                            <th className="p-2.5 text-center">IVA</th>
-                            <th className="p-2.5 text-right">Total</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-border">
-                          {invoiceItems && invoiceItems.length > 0 ? (
-                            invoiceItems.map((it: any, idx: number) => {
-                              const up = Number(it.unitPrice || it.precioUnitario || 0);
-                              const q = Number(it.quantity || 1);
-                              const lineSub = up * q;
-                              const lineTax = Number(it.taxAmount ?? (lineSub * 0.13));
-                              const lineTot = Number(it.totalAmount ?? (lineSub + lineTax));
-                              return (
-                                <tr key={idx}>
-                                  <td className="p-2.5 font-mono text-[11px] text-muted-foreground">{it.cabysCode || it.cabys || "8311100000000"}</td>
-                                  <td className="p-2.5 font-medium text-foreground">
-                                    {it.description || it.detalle || it.name || "Servicio"}
-                                  </td>
-                                  <td className="p-2.5 text-center tabular-nums">{q}</td>
-                                  <td className="p-2.5 text-right tabular-nums">{formatCRC(up)}</td>
-                                  <td className="p-2.5 text-center font-medium">13%</td>
-                                  <td className="p-2.5 text-right font-semibold tabular-nums text-foreground">
-                                    {formatCRC(lineTot)}
-                                  </td>
-                                </tr>
-                              );
-                            })
-                          ) : (
-                            <tr>
-                              <td className="p-2.5 font-mono text-[11px] text-muted-foreground">8311100000000</td>
-                              <td className="p-2.5 font-medium text-foreground">
-                                Servicios profesionales y asesoría técnica especializada
-                              </td>
-                              <td className="p-2.5 text-center tabular-nums">1</td>
-                              <td className="p-2.5 text-right tabular-nums">{formatCRC(subtotal)}</td>
-                              <td className="p-2.5 text-center font-medium">13%</td>
-                              <td className="p-2.5 text-right font-semibold tabular-nums text-foreground">
-                                {formatCRC(invoice.total)}
-                              </td>
-                            </tr>
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-
-                    {/* Totales y QR */}
-                    <div className="flex flex-col sm:flex-row items-center justify-between gap-6 border-t border-border pt-4">
-                      <div className="flex items-center gap-3">
-                        <div className="grid place-items-center rounded-lg border border-border bg-white p-1.5 shadow-sm">
-                          <QRCodeSVG
-                            value={`https://tribunet.hacienda.go.cr/comprobante?clave=${clave}`}
-                            size={64}
-                            level="M"
-                            bgColor="#ffffff"
-                            fgColor="#0f172a"
-                          />
-                        </div>
-                        <div className="text-[10px] text-muted-foreground max-w-[200px] leading-tight">
-                          <span className="font-semibold block text-foreground mb-0.5">
-                            Comprobante Electrónico v4.4 (v2)
-                          </span>
-                          Autorizada mediante resolución N° MH-DGT-RES-0027-2024 del Ministerio de Hacienda.
-                        </div>
-                      </div>
-
-                      <div className="w-full sm:w-64 space-y-1.5 text-xs">
-                        <div className="flex justify-between text-muted-foreground">
-                          <span>Subtotal Gravado:</span>
-                          <span className="tabular-nums font-medium text-foreground">{formatCRC(subtotal)}</span>
-                        </div>
-                        <div className="flex justify-between text-muted-foreground">
-                          <span>Subtotal Exento:</span>
-                          <span className="tabular-nums font-medium text-foreground">₡ 0</span>
-                        </div>
-                        <div className="flex justify-between text-muted-foreground">
-                          <span>IVA (13%):</span>
-                          <span className="tabular-nums font-medium text-foreground">{formatCRC(impuesto)}</span>
-                        </div>
-                        <div className="border-t border-border pt-1.5 flex justify-between text-sm font-bold text-primary">
-                          <span>TOTAL A PAGAR:</span>
-                          <span className="tabular-nums text-base">{formatCRC(invoice.total)}</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Botones de acción inferior */}
-                    <div className="flex justify-end gap-3 pt-2 print:hidden border-t border-border">
+                  <div className="mx-auto max-w-4xl p-2 print:m-0 print:p-0">
+                    <InvoiceRenderer
+                      invoice={invoice}
+                      emisor={{
+                        name: emisorNombre,
+                        legalId: emisorCedula,
+                        legalIdType: (activeEstablishment?.legal_id_type as any) || "02",
+                        email: emisorCorreo,
+                        phone: activeEstablishment?.phone || "+506 2222-0000",
+                        address: activeEstablishment?.address || "San José, Costa Rica",
+                        activityCode: codigoActividad,
+                        logoUrl: savedLogo || undefined,
+                        bankAccounts: savedBank || undefined,
+                        sinpePhone: savedSinpe || undefined,
+                      }}
+                      client={{
+                        name: clientName,
+                        legalId: clientLegalId,
+                        email: clientEmail,
+                        phone: typeof invoice.client === "object" ? invoice.client.phone : undefined,
+                      }}
+                      consecutivo={consecutivo}
+                      clave={clave}
+                      docTypeStr={docTypeStr as any}
+                      docTypeName={
+                        docTypeStr === "01"
+                          ? "FACTURA ELECTRÓNICA"
+                          : docTypeStr === "04"
+                            ? "TIQUETE ELECTRÓNICO"
+                            : docTypeStr === "03"
+                              ? "NOTA DE CRÉDITO"
+                              : "NOTA DE DÉBITO"
+                      }
+                      items={
+                        invoiceItems || [
+                          {
+                            description: "Servicio Profesional / Comercial Autorizado",
+                            quantity: 1,
+                            unitPrice: subtotal,
+                            total: invoice.total,
+                            ivaRate: 13,
+                          },
+                        ]
+                      }
+                      subtotal={subtotal}
+                      impuesto={impuesto}
+                      total={invoice.total}
+                      currency="CRC"
+                      condicionVenta="Contado"
+                      medioPago="Transferencia Bancaria / SINPE"
+                      establishmentId={activeEstablishment?.id}
+                      initialTemplate={savedTemplate || "corporativa"}
+                      showSelector={true}
+                    />
+                    <div className="flex justify-end gap-3 pt-4 print:hidden border-t border-border mt-4">
                       <button
                         onClick={() => window.print()}
                         className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground shadow-sm hover:bg-primary/90"
                       >
-                        <Printer className="h-4 w-4" /> Imprimir Factura / Guardar PDF
+                        <Printer className="h-4 w-4" /> Imprimir Documento / Guardar PDF (1 Página)
                       </button>
                     </div>
                   </div>
