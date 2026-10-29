@@ -19,12 +19,8 @@ import {
   HelpCircle,
   Eye,
   Calendar,
-  Lock,
   Layers,
-  Settings2,
-  ChevronDown,
-  ChevronRight,
-  Filter,
+  Lock,
 } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/common/PageHeader";
@@ -44,7 +40,6 @@ const DESCRIPCIONES_ACTIVIDADES: Record<string, string> = {
   "452001": "Mantenimiento, lavado y reparación de vehículos automotores",
   "452002": "Cambio de aceite, fluidos, lubricentro y mecánica ligera",
   "453001": "Comercio al por menor de repuestos y accesorios automotrices",
-  "681001": "Alquiler y arrendamiento de bienes inmuebles propios o arrendados",
   "960201": "Peluquería, barbería y otros tratamientos de belleza",
   "466101": "Venta al por mayor de combustibles sólidos, líquidos y gaseosos",
   "477303": "Venta al por menor de gas licuado de petróleo (GLP) en cilindros",
@@ -86,33 +81,12 @@ interface MetricasEmpresa {
 }
 
 function PortalContadorPage() {
-  const { establishments, activeEstablishment, setActiveEstablishment, user, isSuperAdmin } = useApp();
+  const { activeEstablishment, establishments, user } = useApp();
   const navigate = useNavigate();
 
-  const [metricasPorEmpresa, setMetricasPorEmpresa] = useState<MetricasEmpresa[]>([]);
+  const [metricasEmpresa, setMetricasEmpresa] = useState<MetricasEmpresa | null>(null);
   const [cargando, setCargando] = useState(true);
-  const [filtroTexto, setFiltroTexto] = useState("");
-  const [copiedId, setCopiedId] = useState<string | null>(null);
-
-  // Selector de empresa activa dentro de la cartera (para filtrar una en específico o ver todas)
-  const [empresaFiltroId, setEmpresaFiltroId] = useState<string>("todas");
-
-  // Modal para gestionar la cartera de empresas del contador (mismo dueño o empresas autorizadas)
-  const [modalCarteraOpen, setModalCarteraOpen] = useState(false);
-  const [carteraSeleccionada, setCarteraSeleccionada] = useState<string[]>(() => {
-    if (typeof window !== "undefined" && user?.email) {
-      const guardada = localStorage.getItem(`facturaos_cartera_contador_${user.email}`);
-      if (guardada) {
-        try {
-          return JSON.parse(guardada);
-        } catch {}
-      }
-    }
-    return [];
-  });
-
-  // Selector de alcance exclusivo para SuperAdmin (Alex / Soporte Global)
-  const [verSoloCarteraCliente, setVerSoloCarteraCliente] = useState(true);
+  const [copied, setCopied] = useState(false);
 
   // Modal de Invitación / Asignación de Contador
   const [invitarModalOpen, setInvitarModalOpen] = useState(false);
@@ -127,241 +101,173 @@ function PortalContadorPage() {
   const [hasta, setHasta] = useState(lastDay);
 
   // =========================================================================
-  // GESTIÓN DE CARTERA MULTI-EMPRESA DEL MISMO DUEÑO Y AISLAMIENTO DE TERCEROS
+  // AISLAMIENTO MULTI-TENANT ESTRICTO:
+  // El contador de una empresa SOLO puede ver los datos y actividades de
+  // ESTA empresa (activeEstablishment). Jamás ve otras empresas de FacturaOS.
   // =========================================================================
-  // 1. Un dueño puede tener varias cédulas jurídicas (empresas diferentes) y un mismo contador.
-  // 2. Cada empresa tiene sus propias actividades económicas y presenta su propio D-104 por separado.
-  // 3. Las empresas de OTROS dueños (no clientes de este contador) permanecen 100% ocultas.
-  const empresasPermitidas = useMemo(() => {
-    // Si es SuperAdmin Y activó expresamente la vista de soporte técnico global
-    if (isSuperAdmin && !verSoloCarteraCliente) {
-      return establishments;
+  const cargarDatosEmpresa = async () => {
+    if (!activeEstablishment?.id) {
+      setMetricasEmpresa(null);
+      setCargando(false);
+      return;
     }
 
-    if (!activeEstablishment) return [];
-
-    const cedulaActiva = (activeEstablishment.legal_id || "").replace(/\D/g, "");
-
-    return establishments.filter((est) => {
-      const cedulaEst = (est.legal_id || "").replace(/\D/g, "");
-
-      // 1. Misma Cédula Jurídica (diferentes actividades económicas o sucursales de la misma sociedad)
-      if (cedulaActiva && cedulaEst === cedulaActiva) {
-        return true;
-      }
-
-      // 2. Establecimiento activo actual
-      if (est.id === activeEstablishment.id) {
-        return true;
-      }
-
-      // 3. Sociedades adicionales del mismo dueño o clientes asignados a la cartera del contador
-      if (carteraSeleccionada.includes(est.id) || carteraSeleccionada.includes(est.code)) {
-        return true;
-      }
-
-      return false;
-    });
-  }, [establishments, activeEstablishment, isSuperAdmin, verSoloCarteraCliente, carteraSeleccionada]);
-
-  const cargarDatosDespacho = async () => {
     setCargando(true);
     try {
+      // 1. Cargar facturas de venta y comprobantes de compra EXCLUSIVAMENTE de este establecimiento
       const [invoicesRes, comprasRes] = await Promise.all([
         supabase
           .from("invoices")
-          .select("id, establishment_id, total, tax_total, subtotal, status, issue_date, economic_activity_code, consecutive_number, items"),
+          .select("id, establishment_id, total, tax_total, subtotal, status, issue_date, economic_activity_code, consecutive_number")
+          .eq("establishment_id", activeEstablishment.id),
         supabase
           .from("compras")
-          .select("id, establishment_id, total_comprobante, total_impuesto, total_gravado, total_exento, estado, fecha_emision, codigo_actividad"),
+          .select("id, establishment_id, total_comprobante, total_impuesto, total_gravado, total_exento, estado, fecha_emision, codigo_actividad")
+          .eq("establishment_id", activeEstablishment.id),
       ]);
 
       const allInvoices = invoicesRes.data || [];
       const allCompras = comprasRes.data || [];
 
-      const resultados: MetricasEmpresa[] = empresasPermitidas.map((est) => {
-        // Filtrar por empresa y rango de fechas
-        const invs = allInvoices.filter((inv: any) => {
-          const matchEst = inv.establishment_id === est.id;
-          const fecha = inv.issue_date?.slice(0, 10) || "";
-          const matchFecha = (!desde || fecha >= desde) && (!hasta || fecha <= hasta);
-          return matchEst && matchFecha && inv.status !== "rechazada";
-        });
+      // 2. Filtrar por rango de fechas del período fiscal
+      const invs = allInvoices.filter((inv: any) => {
+        const fecha = inv.issue_date?.slice(0, 10) || "";
+        const matchFecha = (!desde || fecha >= desde) && (!hasta || fecha <= hasta);
+        return matchFecha && inv.status !== "rechazada";
+      });
 
-        const comps = allCompras.filter((cp: any) => {
-          const matchEst = cp.establishment_id === est.id;
-          const fecha = cp.fecha_emision?.slice(0, 10) || "";
-          const matchFecha = (!desde || fecha >= desde) && (!hasta || fecha <= hasta);
-          return matchEst && matchFecha;
-        });
+      const comps = allCompras.filter((cp: any) => {
+        const fecha = cp.fecha_emision?.slice(0, 10) || "";
+        const matchFecha = (!desde || fecha >= desde) && (!hasta || fecha <= hasta);
+        return matchFecha;
+      });
 
-        const totalVentas = invs.reduce((s: number, i: any) => s + (Number(i.total) || 0), 0);
-        const totalIvaVentas = invs.reduce((s: number, i: any) => s + (Number(i.tax_total) || 0), 0);
-        const cantidadVentas = invs.length;
+      // 3. Totales consolidados de la empresa
+      const totalVentas = invs.reduce((s: number, i: any) => s + (Number(i.total) || 0), 0);
+      const totalIvaVentas = invs.reduce((s: number, i: any) => s + (Number(i.tax_total) || 0), 0);
+      const cantidadVentas = invs.length;
 
-        const totalCompras = comps.reduce((s: number, c: any) => s + (Number(c.total_comprobante) || 0), 0);
-        const totalIvaCompras = comps.reduce((s: number, c: any) => s + (Number(c.total_impuesto) || 0), 0);
-        const cantidadCompras = comps.length;
-        const comprasPendientesCCE = comps.filter((c: any) => c.estado !== "aceptado").length;
+      const totalCompras = comps.reduce((s: number, c: any) => s + (Number(c.total_comprobante) || 0), 0);
+      const totalIvaCompras = comps.reduce((s: number, c: any) => s + (Number(c.total_impuesto) || 0), 0);
+      const cantidadCompras = comps.length;
+      const comprasPendientesCCE = comps.filter((c: any) => c.estado !== "aceptado").length;
 
-        // Prorrata del IVA
-        const ventasExentas = invs.filter((i: any) => Number(i.tax_total) === 0).reduce((s: number, i: any) => s + (Number(i.total) || 0), 0);
-        const ventasGravadas = totalVentas - ventasExentas;
-        let factorProrrata = 100;
-        let tieneProrrata = false;
+      // 4. Prorrata del IVA
+      const ventasExentas = invs.filter((i: any) => Number(i.tax_total) === 0).reduce((s: number, i: any) => s + (Number(i.total) || 0), 0);
+      const ventasGravadas = totalVentas - ventasExentas;
+      let factorProrrata = 100;
+      let tieneProrrata = false;
 
-        if (totalVentas > 0 && ventasExentas > 0) {
-          factorProrrata = Number(((ventasGravadas / totalVentas) * 100).toFixed(2));
-          tieneProrrata = true;
-        }
+      if (totalVentas > 0 && ventasExentas > 0) {
+        factorProrrata = Number(((ventasGravadas / totalVentas) * 100).toFixed(2));
+        tieneProrrata = true;
+      }
 
-        const creditoEfectivo = tieneProrrata ? (totalIvaCompras * factorProrrata) / 100 : totalIvaCompras;
-        const saldoIva = totalIvaVentas - creditoEfectivo;
+      const creditoEfectivo = tieneProrrata ? (totalIvaCompras * factorProrrata) / 100 : totalIvaCompras;
+      const saldoIva = totalIvaVentas - creditoEfectivo;
 
-        // =====================================================================
-        // ACTIVIDADES ECONÓMICAS ESPECÍFICAS DE ESTA EMPRESA / SOCIEDAD
-        // =====================================================================
-        const actividadPrincipalCodigo = est.economic_activity_code || "452001";
-        const codigosEncontrados = new Set<string>();
-        codigosEncontrados.add(actividadPrincipalCodigo);
+      // =====================================================================
+      // 5. ACTIVIDADES ECONÓMICAS INSCRITAS DE ESTA EMPRESA (CASO LUXX)
+      // =====================================================================
+      // En Costa Rica, una empresa como Luxx (Cédula 3102832920) tiene registradas
+      // diferentes actividades comerciales ante Hacienda.
+      const actividadPrincipalCodigo = activeEstablishment.economic_activity_code || "452001";
+      const codigosEncontrados = new Set<string>();
+      codigosEncontrados.add(actividadPrincipalCodigo);
 
-        invs.forEach((inv: any) => {
-          if (inv.economic_activity_code) codigosEncontrados.add(inv.economic_activity_code);
-        });
+      invs.forEach((inv: any) => {
+        if (inv.economic_activity_code) codigosEncontrados.add(inv.economic_activity_code);
+      });
 
-        // Actividades secundarias registradas para Luxx
-        if (est.code?.includes("luxx") || est.legal_id?.includes("3102832920")) {
-          codigosEncontrados.add("452001"); // Mantenimiento y Lavado
-          codigosEncontrados.add("453001"); // Venta de Repuestos y Accesorios
-        }
+      // Si es Luxx o similar con actividades automotrices registradas:
+      if (activeEstablishment.code?.includes("luxx") || activeEstablishment.legal_id?.includes("3102832920")) {
+        codigosEncontrados.add("452001"); // Mantenimiento y Lavado
+        codigosEncontrados.add("453001"); // Comercio de Repuestos y Accesorios
+      }
 
-        const actividades: ActividadEconomicaMetrica[] = Array.from(codigosEncontrados).map((cod) => {
-          const invsAct = invs.filter(
-            (inv: any) => (inv.economic_activity_code || actividadPrincipalCodigo) === cod
-          );
-          const vtasAct = invsAct.reduce((s: number, i: any) => s + (Number(i.total) || 0), 0);
-          const ivaVtasAct = invsAct.reduce((s: number, i: any) => s + (Number(i.tax_total) || 0), 0);
+      const actividades: ActividadEconomicaMetrica[] = Array.from(codigosEncontrados).map((cod) => {
+        const invsAct = invs.filter(
+          (inv: any) => (inv.economic_activity_code || actividadPrincipalCodigo) === cod
+        );
+        const vtasAct = invsAct.reduce((s: number, i: any) => s + (Number(i.total) || 0), 0);
+        const ivaVtasAct = invsAct.reduce((s: number, i: any) => s + (Number(i.tax_total) || 0), 0);
 
-          const proporcion = totalVentas > 0 ? (vtasAct / totalVentas) : (cod === actividadPrincipalCodigo ? 1 : 0);
-          const cpsActMonto = totalCompras * proporcion;
-          const ivaCpsAct = totalIvaCompras * proporcion;
-
-          return {
-            codigoActividad: cod,
-            nombreActividad: DESCRIPCIONES_ACTIVIDADES[cod] || `Actividad Comercial ${cod}`,
-            esPrincipal: cod === actividadPrincipalCodigo,
-            totalVentas: vtasAct || (cod === actividadPrincipalCodigo ? totalVentas : 0),
-            totalIvaVentas: ivaVtasAct || (cod === actividadPrincipalCodigo ? totalIvaVentas : 0),
-            cantidadVentas: invsAct.length || (cod === actividadPrincipalCodigo ? cantidadVentas : 0),
-            totalCompras: cpsActMonto,
-            totalIvaCompras: ivaCpsAct,
-            cantidadCompras: Math.round(cantidadCompras * (proporcion || 1)),
-            comprasPendientesCCE: Math.round(comprasPendientesCCE * (proporcion || 1)),
-            factorProrrata,
-            tieneProrrata,
-            saldoIva: (ivaVtasAct || (cod === actividadPrincipalCodigo ? totalIvaVentas : 0)) - (tieneProrrata ? (ivaCpsAct * factorProrrata) / 100 : ivaCpsAct),
-          };
-        });
+        const proporcion = totalVentas > 0 ? (vtasAct / totalVentas) : (cod === actividadPrincipalCodigo ? 1 : 0);
+        const cpsActMonto = totalCompras * proporcion;
+        const ivaCpsAct = totalIvaCompras * proporcion;
 
         return {
-          establishment: est,
-          totalVentas,
-          totalIvaVentas,
-          cantidadVentas,
-          totalCompras,
-          totalIvaCompras,
-          cantidadCompras,
-          comprasPendientesCCE,
+          codigoActividad: cod,
+          nombreActividad: DESCRIPCIONES_ACTIVIDADES[cod] || `Actividad Comercial ${cod}`,
+          esPrincipal: cod === actividadPrincipalCodigo,
+          totalVentas: vtasAct || (cod === actividadPrincipalCodigo ? totalVentas : 0),
+          totalIvaVentas: ivaVtasAct || (cod === actividadPrincipalCodigo ? totalIvaVentas : 0),
+          cantidadVentas: invsAct.length || (cod === actividadPrincipalCodigo ? cantidadVentas : 0),
+          totalCompras: cpsActMonto,
+          totalIvaCompras: ivaCpsAct,
+          cantidadCompras: Math.round(cantidadCompras * (proporcion || 1)),
+          comprasPendientesCCE: Math.round(comprasPendientesCCE * (proporcion || 1)),
           factorProrrata,
           tieneProrrata,
-          saldoIva,
-          actividades,
+          saldoIva: (ivaVtasAct || (cod === actividadPrincipalCodigo ? totalIvaVentas : 0)) - (tieneProrrata ? (ivaCpsAct * factorProrrata) / 100 : ivaCpsAct),
         };
       });
 
-      setMetricasPorEmpresa(resultados);
+      setMetricasEmpresa({
+        establishment: activeEstablishment,
+        totalVentas,
+        totalIvaVentas,
+        cantidadVentas,
+        totalCompras,
+        totalIvaCompras,
+        cantidadCompras,
+        comprasPendientesCCE,
+        factorProrrata,
+        tieneProrrata,
+        saldoIva,
+        actividades,
+      });
     } catch (err) {
-      console.error("Error cargando despacho contable:", err);
+      console.error("Error cargando portal del contador:", err);
     } finally {
       setCargando(false);
     }
   };
 
   useEffect(() => {
-    if (empresasPermitidas.length > 0) {
-      cargarDatosDespacho();
-    } else {
-      setMetricasPorEmpresa([]);
-      setCargando(false);
-    }
-  }, [empresasPermitidas, desde, hasta]);
+    cargarDatosEmpresa();
+  }, [activeEstablishment?.id, desde, hasta]);
 
-  // Filtro por texto y por selector de sociedad específica
-  const filtradas = useMemo(() => {
-    let list = metricasPorEmpresa;
-    if (empresaFiltroId !== "todas") {
-      list = list.filter((m) => m.establishment.id === empresaFiltroId);
-    }
-    if (!filtroTexto.trim()) return list;
-    const q = filtroTexto.toLowerCase();
-    return list.filter(
-      (m) =>
-        m.establishment.name.toLowerCase().includes(q) ||
-        m.establishment.legal_id.includes(q) ||
-        m.establishment.code.toLowerCase().includes(q)
-    );
-  }, [metricasPorEmpresa, filtroTexto, empresaFiltroId]);
-
-  // Totales Globales de la Cartera Autorizada
-  const kpisDespacho = useMemo(() => {
-    const totalVentasGlobal = filtradas.reduce((s, m) => s + m.totalVentas, 0);
-    const totalComprasGlobal = filtradas.reduce((s, m) => s + m.totalCompras, 0);
-    const totalDebitoGlobal = filtradas.reduce((s, m) => s + m.totalIvaVentas, 0);
-    const totalCreditoGlobal = filtradas.reduce((s, m) => s + m.totalIvaCompras, 0);
-    const empresasPorPagar = filtradas.filter((m) => m.saldoIva > 0).length;
-    const empresasConSaldoFavor = filtradas.filter((m) => m.saldoIva < 0).length;
-
-    return {
-      totalVentasGlobal,
-      totalComprasGlobal,
-      totalDebitoGlobal,
-      totalCreditoGlobal,
-      empresasPorPagar,
-      empresasConSaldoFavor,
-    };
-  }, [filtradas]);
-
-  // Conmutar empresa activa y navegar a DeclaraHub
-  const handleAuditarEmpresa = (est: EstablishmentRecord) => {
-    setActiveEstablishment(est);
-    toast.success(`Conmutado a ${est.name}`, {
-      description: "Abriendo DeclaraHub para auditoría fiscal del D-104...",
-    });
+  // Conmutar a DeclaraHub
+  const handleAuditarDeclaraHub = () => {
     navigate({ to: "/app/reports" });
   };
 
   // Descargar Excel de la empresa
-  const handleDescargarExcelEmpresa = async (est: EstablishmentRecord) => {
+  const handleDescargarExcel = async () => {
+    if (!activeEstablishment) return;
     try {
-      const docs = await cargarComprobantesContablesAsync(est.id, {
-        name: est.name,
-        legalId: est.legal_id,
+      const docs = await cargarComprobantesContablesAsync(activeEstablishment.id, {
+        name: activeEstablishment.name,
+        legalId: activeEstablishment.legal_id,
       });
       generarExcelContador("DETALLADO_COMPROBANTES", desde, hasta, docs, {
-        nombre: est.name,
-        identificacion: est.legal_id,
+        nombre: activeEstablishment.name,
+        identificacion: activeEstablishment.legal_id,
       });
-      toast.success(`Excel contable generado para ${est.name}`);
+      toast.success(`Excel contable generado para ${activeEstablishment.name}`);
     } catch (err) {
       toast.error("Error al generar el reporte contable");
     }
   };
 
-  // Copiar resumen de WhatsApp para enviar al dueño
-  const handleCopiarMensajeCliente = (m: MetricasEmpresa) => {
+  // Copiar resumen de WhatsApp para enviar al cliente
+  const handleCopiarMensaje = () => {
+    if (!metricasEmpresa) return;
+    const m = metricasEmpresa;
     const texto = `👋 Estimado cliente de *${m.establishment.name}*:
 📋 *CIERRE TRIBUTARIO D-104 (PERÍODO ${desde} AL ${hasta})*
-Cédula Jurídica: ${m.establishment.legal_id}
+Cédula: ${m.establishment.legal_id}
 
 🔹 Facturación Emitida: ₡${Math.round(m.totalVentas).toLocaleString()} (${m.cantidadVentas} comprobantes)
 🔹 Débito IVA Recaudado: ₡${Math.round(m.totalIvaVentas).toLocaleString()}
@@ -372,55 +278,35 @@ ${
     ? `📊 Coeficiente de Prorrata Aplicado: ${m.factorProrrata.toFixed(2)}%\n`
     : ""
 }
-⚖️ *RESULTADO DE LA DECLARACIÓN D-104 INDIVIDUAL:*
+⚖️ *RESULTADO DE LA DECLARACIÓN D-104:*
 ${
   m.saldoIva > 0
     ? `🔴 *MONTO NETO A PAGAR A HACIENDA:* ₡${Math.round(m.saldoIva).toLocaleString()} (Plazo: antes del día 15)`
     : `🟢 *SALDO A FAVOR DEL NEGOCIO:* ₡${Math.round(Math.abs(m.saldoIva)).toLocaleString()} (Se acumula para el próximo mes)`
 }
 
-Emitido por su Despacho Contable mediante DeclaraHub.`;
+Emitido por su Contador mediante DeclaraHub FacturaCR Pro.`;
 
     navigator.clipboard.writeText(texto);
-    setCopiedId(m.establishment.id);
-    toast.success(`Mensaje para WhatsApp copiado para ${m.establishment.name}`);
-    setTimeout(() => setCopiedId(null), 2500);
-  };
-
-  // Guardar configuración de cartera de sociedades autorizadas
-  const handleGuardarCartera = (nuevosIds: string[]) => {
-    setCarteraSeleccionada(nuevosIds);
-    if (typeof window !== "undefined" && user?.email) {
-      localStorage.setItem(`facturaos_cartera_contador_${user.email}`, JSON.stringify(nuevosIds));
-    }
-    toast.success("Cartera de empresas actualizada exitosamente", {
-      description: `Ahora supervisas ${nuevosIds.length + 1} empresas autorizadas en tu despacho.`,
-    });
-    setModalCarteraOpen(false);
+    setCopied(true);
+    toast.success(`Resumen contable copiado para WhatsApp`);
+    setTimeout(() => setCopied(false), 2500);
   };
 
   return (
     <div className="mx-auto max-w-7xl space-y-6 pb-12">
       {/* Header */}
       <PageHeader
-        title="Portal del Contador — Cartera de Sociedades & Actividades"
-        description="Panel de control maestro para contadores. Supervisa las diferentes cédulas jurídicas autorizadas de tu cliente, sus actividades económicas individuales y la liquidación del D-104 ante Hacienda."
+        title="Portal del Contador — Supervisión & Auditoría D-104"
+        description={`Panel oficial del contador para auditar las actividades comerciales, el estado de aceptación CCE y la liquidación del D-104 de ${activeEstablishment?.name || "tu empresa"}.`}
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setModalCarteraOpen(true)}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-3.5 py-2 text-xs font-bold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-500/20 transition-colors cursor-pointer"
-              title="Vincular otras sociedades o cédulas jurídicas del mismo dueño a este despacho"
-            >
-              <Settings2 className="h-4 w-4 text-indigo-500" /> Gestionar Cartera ({empresasPermitidas.length})
-            </button>
             <button
               type="button"
               onClick={() => setInvitarModalOpen(true)}
               className="inline-flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-3.5 py-2 text-xs font-bold text-primary hover:bg-primary/20 transition-colors cursor-pointer"
             >
-              <UserPlus className="h-4 w-4" /> Asignar Auditor
+              <UserPlus className="h-4 w-4" /> Asignar Auditor / Contador
             </button>
             <Link
               to="/app/reports"
@@ -432,65 +318,7 @@ Emitido por su Despacho Contable mediante DeclaraHub.`;
         }
       />
 
-      {/* Banner de Aislamiento y Cartera Multi-Empresa */}
-      <div className="rounded-2xl border border-indigo-500/20 bg-gradient-to-r from-indigo-950/20 via-slate-900/30 to-blue-950/20 p-4 shadow-sm">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-          <div className="flex items-center gap-2.5">
-            <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-              <Lock className="h-4 w-4" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="font-bold text-foreground text-sm">
-                  Cartera Activa: {activeEstablishment?.name || "Sin Empresa Seleccionada"}
-                </span>
-                <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] font-bold text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
-                  ✓ Aislamiento Multi-Tenant Certificado
-                </span>
-                {empresasPermitidas.length > 1 && (
-                  <span className="rounded-full bg-indigo-500/15 px-2 py-0.5 text-[11px] font-bold text-indigo-400 border border-indigo-500/30">
-                    {empresasPermitidas.length} Sociedades del mismo Dueño
-                  </span>
-                )}
-              </div>
-              <p className="text-muted-foreground text-[11px] mt-0.5">
-                Cédula Principal: <strong className="font-mono text-foreground">{activeEstablishment?.legal_id || "-"}</strong> • Cada sociedad presenta su propia declaración individual. Las empresas ajenas de otros clientes permanecen 100% invisibles.
-              </p>
-            </div>
-          </div>
-
-          {/* Toggle exclusivo de SuperAdmin (para Alex / Soporte Global) */}
-          {isSuperAdmin && (
-            <div className="flex items-center gap-2 bg-card/80 border border-border rounded-xl p-1 shrink-0">
-              <button
-                type="button"
-                onClick={() => setVerSoloCarteraCliente(true)}
-                className={`px-2.5 py-1 text-[11px] font-bold rounded-lg transition-colors cursor-pointer ${
-                  verSoloCarteraCliente
-                    ? "bg-primary text-primary-foreground shadow-xs"
-                    : "text-muted-foreground hover:bg-muted"
-                }`}
-              >
-                🛡️ Solo Mi Cartera
-              </button>
-              <button
-                type="button"
-                onClick={() => setVerSoloCarteraCliente(false)}
-                className={`px-2.5 py-1 text-[11px] font-bold rounded-lg transition-colors cursor-pointer ${
-                  !verSoloCarteraCliente
-                    ? "bg-amber-600 text-white shadow-xs"
-                    : "text-muted-foreground hover:bg-muted"
-                }`}
-                title="Modo Soporte Técnico SuperAdmin: Ver todos los inquilinos"
-              >
-                🌐 Soporte Global ({establishments.length})
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Rango de Fechas del Cierre Fiscal y Selector de Sociedades */}
+      {/* Rango de Fechas del Cierre Fiscal */}
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-card p-4 shadow-soft">
         <div className="flex flex-wrap items-center gap-3 text-xs">
           <div className="flex items-center gap-2">
@@ -514,26 +342,15 @@ Emitido por su Despacho Contable mediante DeclaraHub.`;
           </div>
         </div>
 
-        {/* Selector de Sociedades de la Cartera */}
-        <div className="flex items-center gap-2 text-xs">
-          <Filter className="h-3.5 w-3.5 text-muted-foreground" />
-          <span className="text-muted-foreground font-semibold">Filtrar Sociedad:</span>
-          <select
-            value={empresaFiltroId}
-            onChange={(e) => setEmpresaFiltroId(e.target.value)}
-            className="h-8 rounded-lg border border-border bg-background px-2.5 text-xs font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
-          >
-            <option value="todas">Todas las Sociedades ({empresasPermitidas.length})</option>
-            {empresasPermitidas.map((e) => (
-              <option key={e.id} value={e.id}>
-                {e.name} ({e.legal_id})
-              </option>
-            ))}
-          </select>
+        <div className="flex items-center gap-2 text-xs text-muted-foreground font-mono">
+          <Building2 className="h-4 w-4 text-primary" />
+          <span>
+            Empresa: <strong className="text-foreground">{activeEstablishment?.name}</strong> ({activeEstablishment?.legal_id})
+          </span>
         </div>
       </div>
 
-      {/* KPIs Globales de la Cartera */}
+      {/* KPIs Globales de la Empresa */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {/* Total Facturado */}
         <div className="rounded-2xl border border-border bg-card p-4 shadow-soft flex items-center gap-3.5">
@@ -541,12 +358,12 @@ Emitido por su Despacho Contable mediante DeclaraHub.`;
             <TrendingUp className="h-6 w-6" />
           </div>
           <div>
-            <p className="text-xs font-medium text-muted-foreground">Ventas Totales Cartera</p>
+            <p className="text-xs font-medium text-muted-foreground">Ventas Totales del Período</p>
             <p className="text-lg font-bold text-foreground tabular-nums">
-              {formatCRC(kpisDespacho.totalVentasGlobal)}
+              {formatCRC(metricasEmpresa?.totalVentas || 0)}
             </p>
             <p className="text-[11px] text-muted-foreground">
-              IVA Débito: +{formatCRC(kpisDespacho.totalDebitoGlobal)}
+              IVA Débito: +{formatCRC(metricasEmpresa?.totalIvaVentas || 0)}
             </p>
           </div>
         </div>
@@ -559,323 +376,227 @@ Emitido por su Despacho Contable mediante DeclaraHub.`;
           <div>
             <p className="text-xs font-medium text-muted-foreground">Compras / Gastos Soportados</p>
             <p className="text-lg font-bold text-foreground tabular-nums">
-              {formatCRC(kpisDespacho.totalComprasGlobal)}
+              {formatCRC(metricasEmpresa?.totalCompras || 0)}
             </p>
             <p className="text-[11px] text-muted-foreground">
-              IVA Crédito: -{formatCRC(kpisDespacho.totalCreditoGlobal)}
+              IVA Crédito: -{formatCRC(metricasEmpresa?.totalIvaCompras || 0)}
             </p>
           </div>
         </div>
 
-        {/* Sociedades con Saldo a Pagar */}
-        <div className="rounded-2xl border border-border bg-card p-4 shadow-soft flex items-center gap-3.5">
-          <div className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-amber-500/10 text-amber-600">
-            <AlertCircle className="h-6 w-6" />
-          </div>
-          <div>
-            <p className="text-xs font-medium text-muted-foreground">Sociedades con Pago de IVA</p>
-            <p className="text-lg font-bold text-amber-600 tabular-nums">
-              {kpisDespacho.empresasPorPagar} sociedad(es)
-            </p>
-            <p className="text-[11px] text-muted-foreground">Declaración D-104 [Casilla 140]</p>
-          </div>
-        </div>
-
-        {/* Sociedades con Saldo a Favor */}
+        {/* Confirmación CCE */}
         <div className="rounded-2xl border border-border bg-card p-4 shadow-soft flex items-center gap-3.5">
           <div className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-emerald-500/10 text-emerald-600">
             <ShieldCheck className="h-6 w-6" />
           </div>
           <div>
-            <p className="text-xs font-medium text-muted-foreground">Sociedades con Saldo a Favor</p>
-            <p className="text-lg font-bold text-emerald-600 tabular-nums">
-              {kpisDespacho.empresasConSaldoFavor} sociedad(es)
+            <p className="text-xs font-medium text-muted-foreground">Aceptación CCE (Gastos)</p>
+            <p className="text-lg font-bold text-foreground tabular-nums">
+              {metricasEmpresa?.comprasPendientesCCE && metricasEmpresa.comprasPendientesCCE > 0
+                ? `${metricasEmpresa.comprasPendientesCCE} pendientes`
+                : "Gastos al día ✓"}
             </p>
-            <p className="text-[11px] text-muted-foreground">Crédito fiscal acumulado [Casilla 141]</p>
+            <p className="text-[11px] text-muted-foreground">Mensaje Receptor ante Hacienda</p>
+          </div>
+        </div>
+
+        {/* Liquidación D-104 */}
+        <div
+          className={`rounded-2xl border p-4 shadow-soft flex items-center gap-3.5 ${
+            (metricasEmpresa?.saldoIva || 0) > 0
+              ? "border-amber-500/30 bg-amber-500/5"
+              : "border-emerald-500/30 bg-emerald-500/5"
+          }`}
+        >
+          <div
+            className={`grid h-12 w-12 shrink-0 place-items-center rounded-xl ${
+              (metricasEmpresa?.saldoIva || 0) > 0
+                ? "bg-amber-500/10 text-amber-600"
+                : "bg-emerald-500/10 text-emerald-600"
+            }`}
+          >
+            <AlertCircle className="h-6 w-6" />
+          </div>
+          <div>
+            <p className="text-xs font-medium text-muted-foreground">Liquidación D-104</p>
+            <p
+              className={`text-lg font-bold tabular-nums ${
+                (metricasEmpresa?.saldoIva || 0) > 0 ? "text-amber-600" : "text-emerald-600"
+              }`}
+            >
+              {(metricasEmpresa?.saldoIva || 0) > 0 ? "Pagar: " : "A favor: "}
+              {formatCRC(Math.abs(metricasEmpresa?.saldoIva || 0))}
+            </p>
+            <p className="text-[11px] text-muted-foreground">
+              {(metricasEmpresa?.saldoIva || 0) > 0 ? "Casilla [140] D-104" : "Casilla [141] D-104"}
+            </p>
           </div>
         </div>
       </div>
 
       {/* ========================================================================= */}
-      {/* VISTA JERÁRQUICA: CADA SOCIEDAD CON SUS PROPIAS ACTIVIDADES ECONÓMICAS     */}
+      {/* TABLA PRINCIPAL: ACTIVIDADES ECONÓMICAS ESPECÍFICAS DE ESTA EMPRESA       */}
       {/* ========================================================================= */}
-      <div className="space-y-6">
-        {cargando ? (
-          <div className="rounded-2xl border border-border bg-card p-12 text-center text-muted-foreground text-xs shadow-soft">
-            Cargando la cartera contable y sus actividades económicas...
+      <div className="rounded-2xl border border-border bg-card shadow-soft overflow-hidden">
+        <div className="p-4 sm:p-5 border-b border-border bg-muted/20 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-bold text-primary flex items-center gap-1.5">
+                <Layers className="h-3.5 w-3.5" /> Actividades Económicas ante Hacienda (RUT)
+              </span>
+              <span className="font-mono text-xs font-bold text-foreground">
+                Cédula: {activeEstablishment?.legal_id}
+              </span>
+            </div>
+            <h3 className="text-base font-bold text-foreground">
+              {activeEstablishment?.name}
+            </h3>
+            <p className="text-xs text-muted-foreground">
+              Desglose fiscal por código de actividad económica para la presentación mensual del Formulario D-104:
+            </p>
           </div>
-        ) : filtradas.length === 0 ? (
-          <div className="rounded-2xl border border-border bg-card p-12 text-center text-muted-foreground text-xs shadow-soft">
-            No se encontraron sociedades autorizadas para este usuario.
+
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={handleAuditarDeclaraHub}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-2 text-xs font-bold text-primary-foreground shadow-xs hover:bg-primary/90 transition-all cursor-pointer"
+            >
+              <Eye className="h-4 w-4" /> Auditar en DeclaraHub
+            </button>
+            <button
+              type="button"
+              onClick={handleDescargarExcel}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-xs font-semibold hover:bg-muted transition-colors cursor-pointer"
+              title="Descargar libro contable en Excel (.xlsx)"
+            >
+              <FileSpreadsheet className="h-4 w-4 text-emerald-600" /> Excel
+            </button>
+            <button
+              type="button"
+              onClick={handleCopiarMensaje}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-xs font-semibold hover:bg-muted transition-colors cursor-pointer"
+              title="Copiar resumen para WhatsApp del cliente"
+            >
+              {copied ? (
+                <Check className="h-4 w-4 text-emerald-500" />
+              ) : (
+                <Send className="h-4 w-4 text-primary" />
+              )}
+              {copied ? "¡Copiado!" : "WhatsApp"}
+            </button>
           </div>
-        ) : (
-          filtradas.map((m) => (
-            <div key={m.establishment.id} className="rounded-2xl border border-border bg-card shadow-soft overflow-hidden">
-              {/* Encabezado de la Sociedad / Cédula Jurídica */}
-              <div className="p-4 sm:p-5 border-b border-border bg-muted/20 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2.5 flex-wrap">
-                    <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-bold text-primary flex items-center gap-1.5">
-                      <Building2 className="h-3.5 w-3.5" /> Sociedad / Cédula Independiente
-                    </span>
-                    <span className="font-mono text-xs font-bold text-foreground">
-                      Cédula: {m.establishment.legal_id}
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      (Cód: {m.establishment.code})
-                    </span>
-                  </div>
-                  <h3 className="text-base sm:text-lg font-black text-foreground">
-                    {m.establishment.name}
-                  </h3>
-                  <p className="text-xs text-muted-foreground">
-                    Cada sociedad presenta su propia declaración D-104 individual ante Hacienda. Desglose de actividades inscritas:
-                  </p>
-                </div>
+        </div>
 
-                <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => handleAuditarEmpresa(m.establishment)}
-                    className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-2 text-xs font-bold text-primary-foreground shadow-xs hover:bg-primary/90 transition-all cursor-pointer"
-                  >
-                    <Eye className="h-4 w-4" /> Auditar en DeclaraHub
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleDescargarExcelEmpresa(m.establishment)}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-xs font-semibold hover:bg-muted transition-colors cursor-pointer"
-                    title="Descargar libro contable en Excel (.xlsx)"
-                  >
-                    <FileSpreadsheet className="h-4 w-4 text-emerald-600" /> Excel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleCopiarMensajeCliente(m)}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-xs font-semibold hover:bg-muted transition-colors cursor-pointer"
-                    title="Copiar resumen para WhatsApp del cliente"
-                  >
-                    {copiedId === m.establishment.id ? (
-                      <Check className="h-4 w-4 text-emerald-500" />
-                    ) : (
-                      <Send className="h-4 w-4 text-primary" />
-                    )}
-                    WhatsApp
-                  </button>
-                </div>
-              </div>
-
-              {/* Tabla de Actividades Económicas de ESTA Sociedad */}
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-muted/40 text-[11px] text-muted-foreground border-b border-border font-semibold">
-                    <tr>
-                      <th className="px-4 py-2.5">ACTIVIDAD ECONÓMICA (RUT HACIENDA)</th>
-                      <th className="px-4 py-2.5 text-right">VENTAS NETAS</th>
-                      <th className="px-4 py-2.5 text-right">DÉBITO IVA (13%)</th>
-                      <th className="px-4 py-2.5 text-right">COMPRAS / GASTOS</th>
-                      <th className="px-4 py-2.5 text-center">CONFIRMACIÓN CCE</th>
-                      <th className="px-4 py-2.5 text-center">PRORRATA [114]</th>
-                      <th className="px-4 py-2.5 text-right">ESTADO D-104</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border text-xs">
-                    {m.actividades.map((act) => (
-                      <tr key={act.codigoActividad} className="hover:bg-muted/20 transition-colors">
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2">
-                            <span className="font-mono font-bold text-primary rounded bg-primary/10 px-1.5 py-0.5 text-[11px]">
-                              {act.codigoActividad}
-                            </span>
-                            <span className="font-semibold text-foreground">
-                              {act.nombreActividad}
-                            </span>
-                            {act.esPrincipal && (
-                              <span className="rounded-full bg-blue-500/10 px-2 py-0.2 text-[9px] font-black uppercase text-blue-600 dark:text-blue-400">
-                                Principal
-                              </span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 text-right font-mono font-bold text-foreground">
-                          {formatCRC(act.totalVentas)}
-                        </td>
-                        <td className="px-4 py-3 text-right font-mono text-emerald-600 dark:text-emerald-400">
-                          +{formatCRC(act.totalIvaVentas)}
-                        </td>
-                        <td className="px-4 py-3 text-right font-mono text-foreground">
-                          {formatCRC(act.totalCompras)}
-                        </td>
-                        <td className="px-4 py-3 text-center">
-                          {m.comprasPendientesCCE > 0 ? (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-bold text-amber-600">
-                              <AlertCircle className="h-3 w-3" /> {m.comprasPendientesCCE} pend.
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-600">
-                              <ShieldCheck className="h-3 w-3" /> Al día ✓
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-center font-mono">
-                          <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[11px] font-bold text-emerald-600">
-                            {act.factorProrrata.toFixed(2)}%
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-right font-mono font-bold">
-                          {act.saldoIva > 0 ? (
-                            <span className="text-amber-600 dark:text-amber-400">
-                              Pagar: {formatCRC(act.saldoIva)}
-                            </span>
-                          ) : (
-                            <span className="text-emerald-600 dark:text-emerald-400">
-                              A favor: {formatCRC(Math.abs(act.saldoIva))}
-                            </span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  <tfoot>
-                    <tr className="bg-muted/70 font-bold border-t-2 border-border text-xs">
-                      <td className="px-4 py-3.5 uppercase tracking-wider text-foreground">
-                        ⚖️ Liquidación Oficial D-104 — Cédula {m.establishment.legal_id}:
-                      </td>
-                      <td className="px-4 py-3.5 text-right font-mono text-foreground">
-                        {formatCRC(m.totalVentas)}
-                      </td>
-                      <td className="px-4 py-3.5 text-right font-mono text-emerald-600 dark:text-emerald-400">
-                        +{formatCRC(m.totalIvaVentas)}
-                      </td>
-                      <td className="px-4 py-3.5 text-right font-mono text-foreground">
-                        {formatCRC(m.totalCompras)}
-                      </td>
-                      <td className="px-4 py-3.5 text-center">
-                        <span className="text-[10px] text-muted-foreground">Consolidado</span>
-                      </td>
-                      <td className="px-4 py-3.5 text-center font-mono text-emerald-600">
-                        {m.factorProrrata.toFixed(2)}%
-                      </td>
-                      <td className="px-4 py-3.5 text-right font-mono text-sm">
-                        {m.saldoIva > 0 ? (
-                          <span className="text-amber-600 dark:text-amber-400">
-                            🔴 Pagar: {formatCRC(m.saldoIva)} [Cas. 140]
-                          </span>
-                        ) : (
-                          <span className="text-emerald-600 dark:text-emerald-400">
-                            🟢 A favor: {formatCRC(Math.abs(m.saldoIva))} [Cas. 141]
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs">
+            <thead className="bg-muted/40 text-[11px] text-muted-foreground border-b border-border font-semibold">
+              <tr>
+                <th className="px-4 py-3">ACTIVIDAD ECONÓMICA (HACIENDA)</th>
+                <th className="px-4 py-3 text-right">VENTAS NETAS</th>
+                <th className="px-4 py-3 text-right">DÉBITO IVA (13%)</th>
+                <th className="px-4 py-3 text-right">COMPRAS / GASTOS</th>
+                <th className="px-4 py-3 text-center">PRORRATA [114]</th>
+                <th className="px-4 py-3 text-right">ESTADO D-104</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border text-xs">
+              {cargando ? (
+                <tr>
+                  <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
+                    Cargando actividades económicas de la empresa...
+                  </td>
+                </tr>
+              ) : !metricasEmpresa || metricasEmpresa.actividades.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
+                    No hay comprobantes emitidos en el período fiscal seleccionado.
+                  </td>
+                </tr>
+              ) : (
+                metricasEmpresa.actividades.map((act) => (
+                  <tr key={act.codigoActividad} className="hover:bg-muted/20 transition-colors">
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono font-bold text-primary rounded bg-primary/10 px-1.5 py-0.5 text-[11px]">
+                          {act.codigoActividad}
+                        </span>
+                        <span className="font-semibold text-foreground">
+                          {act.nombreActividad}
+                        </span>
+                        {act.esPrincipal && (
+                          <span className="rounded-full bg-blue-500/10 px-2 py-0.2 text-[9px] font-black uppercase text-blue-600 dark:text-blue-400">
+                            Principal
                           </span>
                         )}
-                      </td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-            </div>
-          ))
-        )}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-right font-mono font-bold text-foreground">
+                      {formatCRC(act.totalVentas)}
+                    </td>
+                    <td className="px-4 py-3 text-right font-mono text-emerald-600 dark:text-emerald-400">
+                      +{formatCRC(act.totalIvaVentas)}
+                    </td>
+                    <td className="px-4 py-3 text-right font-mono text-foreground">
+                      {formatCRC(act.totalCompras)}
+                    </td>
+                    <td className="px-4 py-3 text-center font-mono">
+                      <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[11px] font-bold text-emerald-600">
+                        {act.factorProrrata.toFixed(2)}%
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-right font-mono font-bold">
+                      {act.saldoIva > 0 ? (
+                        <span className="text-amber-600 dark:text-amber-400">
+                          Pagar: {formatCRC(act.saldoIva)}
+                        </span>
+                      ) : (
+                        <span className="text-emerald-600 dark:text-emerald-400">
+                          A favor: {formatCRC(Math.abs(act.saldoIva))}
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+            {metricasEmpresa && metricasEmpresa.actividades.length > 0 && (
+              <tfoot>
+                <tr className="bg-muted/70 font-bold border-t-2 border-border text-xs">
+                  <td className="px-4 py-3.5 uppercase tracking-wider text-foreground">
+                    ⚖️ Liquidación Oficial D-104 — Cédula {metricasEmpresa.establishment.legal_id}:
+                  </td>
+                  <td className="px-4 py-3.5 text-right font-mono text-foreground">
+                    {formatCRC(metricasEmpresa.totalVentas)}
+                  </td>
+                  <td className="px-4 py-3.5 text-right font-mono text-emerald-600 dark:text-emerald-400">
+                    +{formatCRC(metricasEmpresa.totalIvaVentas)}
+                  </td>
+                  <td className="px-4 py-3.5 text-right font-mono text-foreground">
+                    {formatCRC(metricasEmpresa.totalCompras)}
+                  </td>
+                  <td className="px-4 py-3.5 text-center font-mono text-emerald-600">
+                    {metricasEmpresa.factorProrrata.toFixed(2)}%
+                  </td>
+                  <td className="px-4 py-3.5 text-right font-mono text-sm">
+                    {metricasEmpresa.saldoIva > 0 ? (
+                      <span className="text-amber-600 dark:text-amber-400">
+                        🔴 Pagar: {formatCRC(metricasEmpresa.saldoIva)} [Cas. 140]
+                      </span>
+                    ) : (
+                      <span className="text-emerald-600 dark:text-emerald-400">
+                        🟢 A favor: {formatCRC(Math.abs(metricasEmpresa.saldoIva))} [Cas. 141]
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              </tfoot>
+            )}
+          </table>
+        </div>
       </div>
 
-      {/* ========================================================================= */}
-      {/* MODAL: GESTIONAR CARTERA DE EMPRESAS AUTORIZADAS (MISMO DUEÑO / GRUPO)   */}
-      {/* ========================================================================= */}
-      {modalCarteraOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-lg rounded-2xl border border-border bg-card p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between border-b border-border pb-3">
-              <div className="flex items-center gap-2">
-                <div className="grid h-9 w-9 place-items-center rounded-xl bg-indigo-500/10 text-indigo-500">
-                  <Settings2 className="h-5 w-5" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-foreground">Gestionar Cartera de Sociedades</h3>
-                  <p className="text-[11px] text-muted-foreground">
-                    Vincula varias cédulas jurídicas que pertenezcan al mismo dueño o grupo.
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={() => setModalCarteraOpen(false)}
-                className="rounded-lg p-1 text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            <div className="space-y-3 text-xs">
-              <p className="text-muted-foreground text-[11px]">
-                Selecciona las empresas que este contador tiene autorizadas para auditar. Cada sociedad mantiene su propia contabilidad independiente y las empresas no marcadas permanecen 100% aisladas.
-              </p>
-
-              <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-                {establishments.map((est) => {
-                  const esActiva = est.id === activeEstablishment?.id || (activeEstablishment?.legal_id && est.legal_id === activeEstablishment.legal_id);
-                  const estaMarcada = esActiva || carteraSeleccionada.includes(est.id);
-
-                  return (
-                    <label
-                      key={est.id}
-                      className={`flex items-center justify-between p-3 rounded-xl border transition-colors cursor-pointer ${
-                        estaMarcada ? "border-primary/40 bg-primary/5" : "border-border bg-background hover:bg-muted/30"
-                      }`}
-                    >
-                      <div className="space-y-0.5">
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-foreground">{est.name}</span>
-                          {esActiva && (
-                            <span className="rounded bg-primary/20 text-primary px-1.5 py-0.2 text-[10px] font-bold">
-                              Actual
-                            </span>
-                          )}
-                        </div>
-                        <div className="font-mono text-[11px] text-muted-foreground">
-                          Cédula: {est.legal_id} • Cód: {est.code}
-                        </div>
-                      </div>
-
-                      <input
-                        type="checkbox"
-                        checked={estaMarcada}
-                        disabled={esActiva}
-                        onChange={(e) => {
-                          if (esActiva) return;
-                          if (e.target.checked) {
-                            setCarteraSeleccionada([...carteraSeleccionada, est.id]);
-                          } else {
-                            setCarteraSeleccionada(carteraSeleccionada.filter((id) => id !== est.id));
-                          }
-                        }}
-                        className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
-                      />
-                    </label>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-2 pt-3 border-t border-border">
-              <button
-                type="button"
-                onClick={() => setModalCarteraOpen(false)}
-                className="rounded-lg border border-border px-3.5 py-2 text-xs font-semibold hover:bg-muted cursor-pointer"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={() => handleGuardarCartera(carteraSeleccionada)}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-xs font-bold text-primary-foreground hover:bg-primary/90 cursor-pointer"
-              >
-                <Check className="h-4 w-4" /> Guardar Cartera Autorizada
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ========================================================================= */}
-      {/* MODAL: ASIGNACIÓN / INVITACIÓN A CONTADOR DE ESTE CLIENTE                 */}
-      {/* ========================================================================= */}
+      {/* Modal de Asignación / Invitación a Contador */}
       {invitarModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
           <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-2xl space-y-4">
@@ -885,8 +606,8 @@ Emitido por su Despacho Contable mediante DeclaraHub.`;
                   <UserPlus className="h-5 w-5" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-foreground">Asignar Contador a este Grupo</h3>
-                  <p className="text-[11px] text-muted-foreground">Acceso de auditoría restringido a estas sociedades.</p>
+                  <h3 className="text-sm font-bold text-foreground">Asignar Contador a esta Empresa</h3>
+                  <p className="text-[11px] text-muted-foreground">Acceso de auditoría restringido a {activeEstablishment?.name}.</p>
                 </div>
               </div>
               <button
@@ -921,10 +642,10 @@ Emitido por su Despacho Contable mediante DeclaraHub.`;
 
               <div className="rounded-xl border border-indigo-500/20 bg-indigo-500/5 p-3 text-[11px] text-muted-foreground space-y-1">
                 <strong className="text-foreground flex items-center gap-1">
-                  <Lock className="h-3.5 w-3.5 text-indigo-500" /> Aislamiento de Cartera Garantizado:
+                  <Lock className="h-3.5 w-3.5 text-indigo-500" /> Aislamiento de Seguridad:
                 </strong>
-                <p>• Este contador <strong>SOLO</strong> tendrá acceso a las sociedades autorizadas de su cliente.</p>
-                <p>• Las demás empresas del sistema permanecerán completamente invisibles e inaccesibles para él.</p>
+                <p>• Este contador <strong>SOLO</strong> tendrá acceso a las facturas y actividades de <strong>{activeEstablishment?.name}</strong>.</p>
+                <p>• Tendrá rol de solo lectura: no puede emitir facturas ni modificar credenciales de Hacienda.</p>
               </div>
             </div>
 
@@ -943,7 +664,7 @@ Emitido por su Despacho Contable mediante DeclaraHub.`;
                     toast.error("Por favor ingresa el correo del contador.");
                     return;
                   }
-                  toast.success(`Contador asignado con éxito`, {
+                  toast.success(`Contador asignado con éxito a ${activeEstablishment?.name}`, {
                     description: `Se enviaron las credenciales de auditoría a ${invitarEmail}.`,
                   });
                   setInvitarModalOpen(false);
