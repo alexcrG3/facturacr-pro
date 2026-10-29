@@ -87,7 +87,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     estData: EstablishmentRecord[],
     currentUserEmail?: string,
     currentUserRole?: Role,
-    overrideEstId?: string | null
+    overrideEstId?: string | null,
+    overrideAllowedIds?: string[]
   ): EstablishmentRecord | null => {
     if (!estData || estData.length === 0) return null;
 
@@ -95,13 +96,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const role = currentUserRole || user.role;
     const isSuper = role === "super_admin" || role === "contador" || email === "alex@mail.com";
     const estId = overrideEstId !== undefined ? overrideEstId : user.establishment_id;
+    const allowedIds: string[] = overrideAllowedIds || (authUser as any)?.user_metadata?.allowed_establishment_ids || [];
 
     // 0. Si viene en la URL (?est= o ?app=) y el usuario es super_admin o tiene permiso
     const urlParams = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
     const paramEst = urlParams?.get("est") || urlParams?.get("app");
     if (paramEst) {
       const matchParam = estData.find((e: any) => e.code === paramEst || e.id === paramEst);
-      if (matchParam && (isSuper || (authUser as any)?.user_metadata?.allowed_establishment_ids?.includes(matchParam.id) || matchParam.id === estId)) {
+      if (matchParam && (isSuper || allowedIds.includes(matchParam.id) || matchParam.id === estId)) {
         if (typeof window !== "undefined") {
           localStorage.setItem("facturaos_active_est_id", matchParam.id);
         }
@@ -111,7 +113,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     // 1. Si es inquilino (no super_admin ni contador), anclarlo ESTRICTAMENTE a sus empresas autorizadas
     if (!isSuper) {
-      const allowedIds: string[] = (authUser as any)?.user_metadata?.allowed_establishment_ids || [];
       const savedId = typeof window !== "undefined" ? localStorage.getItem("facturaos_active_est_id") : null;
 
       // Si tiene varias empresas y había una guardada en sesión que está autorizada
@@ -180,7 +181,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return found || null;
   };
 
-  const loadEstablishments = async (overrideEmail?: string, overrideRole?: Role, overrideEstId?: string | null) => {
+  const loadEstablishments = async (
+    overrideEmail?: string,
+    overrideRole?: Role,
+    overrideEstId?: string | null,
+    overrideAllowedIds?: string[]
+  ) => {
     try {
       const { data: estData, error } = await supabase
         .from("establishments")
@@ -192,7 +198,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const role = overrideRole || user.role;
         const email = (overrideEmail || user.email || "").toLowerCase().trim();
         const isSuper = role === "super_admin" || role === "contador" || email === "alex@mail.com";
-        const allowedIds: string[] = (authUser as any)?.user_metadata?.allowed_establishment_ids || [];
+        const allowedIds: string[] =
+          overrideAllowedIds !== undefined
+            ? overrideAllowedIds
+            : (authUser as any)?.user_metadata?.allowed_establishment_ids || [];
         const userEstId = overrideEstId !== undefined ? overrideEstId : user.establishment_id;
 
         // Filtrar establecimientos autorizados para el usuario
@@ -206,7 +215,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             });
 
         setEstablishments(filteredEsts.length > 0 ? filteredEsts : estData);
-        const resolved = resolveActiveEstablishment(estData, overrideEmail, overrideRole, overrideEstId);
+        const resolved = resolveActiveEstablishment(estData, overrideEmail, overrideRole, overrideEstId, allowedIds);
         if (resolved) {
           setActiveEstablishmentState(resolved);
         }
@@ -222,6 +231,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const allowedIds: string[] = (authUser as any)?.user_metadata?.allowed_establishment_ids || [];
     const isAllowed =
       isAuditorOrSuper ||
+      allowedIds.length === 0 ||
       allowedIds.includes(est.id) ||
       (user.establishment_id && est.id === user.establishment_id);
 
@@ -241,20 +251,33 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const loadUserProfile = async (sbUser: SupabaseAuthUser) => {
     try {
+      // 1. Siempre consultar a Supabase Auth para obtener metadata fresca (allowed_establishment_ids)
+      let activeUser = sbUser;
+      try {
+        const { data: freshUserResp } = await supabase.auth.getUser();
+        if (freshUserResp?.user) {
+          activeUser = freshUserResp.user;
+          setAuthUser(freshUserResp.user);
+        }
+      } catch (e) {
+        console.warn("getUser fallback:", e);
+      }
+
       const { data: profile, error } = await supabase
         .from("profiles")
         .select("*")
-        .eq("id", sbUser.id)
+        .eq("id", activeUser.id)
         .maybeSingle();
 
-      const userEmail = profile?.email || sbUser.email || "";
-      const role = ((profile?.role || sbUser.user_metadata?.role) as Role) || "admin";
-      const name = profile?.full_name || sbUser.user_metadata?.full_name || userEmail.split("@")[0] || "Usuario";
-      const establishment_id = profile?.establishment_id || (sbUser as any)?.user_metadata?.establishment_id || null;
+      const userEmail = profile?.email || activeUser.email || "";
+      const role = ((profile?.role || activeUser.user_metadata?.role) as Role) || "admin";
+      const name = profile?.full_name || activeUser.user_metadata?.full_name || userEmail.split("@")[0] || "Usuario";
+      const establishment_id = profile?.establishment_id || (activeUser as any)?.user_metadata?.establishment_id || null;
+      const allowedIds: string[] = (activeUser as any)?.user_metadata?.allowed_establishment_ids || [];
 
       if (!profile && !error) {
         await supabase.from("profiles").upsert({
-          id: sbUser.id,
+          id: activeUser.id,
           email: userEmail,
           full_name: name,
           role,
@@ -263,7 +286,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
 
       setUser({
-        id: sbUser.id,
+        id: activeUser.id,
         name,
         email: userEmail,
         role,
@@ -271,8 +294,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         establishment_id,
       });
 
-      // Refrescar y alinear establecimiento activo con la identidad del usuario
-      await loadEstablishments(userEmail, role, establishment_id);
+      // Refrescar y alinear establecimiento activo pasando explícitamente allowedIds frescos
+      await loadEstablishments(userEmail, role, establishment_id, allowedIds);
     } catch (err) {
       console.error("Error cargando perfil de usuario:", err);
       const name = sbUser.email?.split("@")[0] || "Usuario";

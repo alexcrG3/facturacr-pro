@@ -34,9 +34,23 @@ function LoginPage() {
   const navigate = useNavigate();
   const search = Route.useSearch();
 
-  const [mode, setMode] = useState<"login" | "register">(
-    search?.mode === "register" || search?.cedula ? "register" : "login"
-  );
+  const getClientParam = (key: string): string => {
+    if (typeof window !== "undefined") {
+      const sp = new URLSearchParams(window.location.search);
+      const val = sp.get(key);
+      if (val) return val;
+    }
+    return ((search as any)?.[key] as string) || "";
+  };
+
+  const [mode, setMode] = useState<"login" | "register">(() => {
+    if (typeof window !== "undefined") {
+      const sp = new URLSearchParams(window.location.search);
+      if (sp.get("mode") === "register" || sp.get("cedula")) return "register";
+      if (sp.get("mode") === "login") return "login";
+    }
+    return search?.mode === "register" || search?.cedula ? "register" : "login";
+  });
   const [loading, setLoading] = useState(false);
   const [checkingSession, setCheckingSession] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
@@ -47,8 +61,8 @@ function LoginPage() {
   const [fullName, setFullName] = useState("");
 
   // Campos específicos de Registro del Dueño de la Empresa
-  const [cedula, setCedula] = useState(search?.cedula || "");
-  const [companyLegalName, setCompanyLegalName] = useState(search?.empresa || "");
+  const [cedula, setCedula] = useState(() => getClientParam("cedula"));
+  const [companyLegalName, setCompanyLegalName] = useState(() => getClientParam("empresa"));
   const [validatingCedula, setValidatingCedula] = useState(false);
   const [cedulaValidation, setCedulaValidation] = useState<any | null>(null);
 

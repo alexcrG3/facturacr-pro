@@ -52,46 +52,70 @@ export function AppTopbar({ onMenu }: { onMenu: () => void }) {
       {/* Empresa / Negocio en operación con selector para clientes con múltiples sociedades */}
       {establishments.length > 1 ? (
         <DropdownMenu>
-          <DropdownMenuTrigger className="hidden items-center gap-2 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium hover:bg-muted/80 md:flex cursor-pointer transition-colors outline-none focus:ring-2 focus:ring-primary/20">
-            <Building2 className="h-4 w-4 text-primary shrink-0" />
+          <DropdownMenuTrigger className="flex items-center gap-2.5 rounded-xl border border-indigo-200 bg-indigo-50/70 hover:bg-indigo-100/90 text-indigo-950 px-3 py-1.5 text-xs font-semibold cursor-pointer transition-all shadow-xs outline-none focus:ring-2 focus:ring-indigo-500/20">
+            <Building2 className="h-4 w-4 text-indigo-600 shrink-0" />
             <div className="text-left leading-tight">
-              <span className="font-semibold text-foreground truncate max-w-[170px] block">
+              <span className="font-bold text-slate-900 truncate max-w-[190px] block">
                 {activeEstablishment?.app_name || activeEstablishment?.name || "FacturaOS"}
               </span>
               {activeEstablishment?.legal_id && (
-                <span className="text-[10px] text-muted-foreground font-mono block">
-                  {activeEstablishment.legal_id}
+                <span className="text-[10px] text-indigo-600 font-mono block font-medium">
+                  Cédula: {activeEstablishment.legal_id}
                 </span>
               )}
             </div>
-            <ChevronDown className="h-3.5 w-3.5 text-muted-foreground ml-1 shrink-0" />
+            <div className="flex items-center gap-1 ml-1 shrink-0">
+              <span className="text-[10px] font-bold bg-indigo-600 text-white px-1.5 py-0.5 rounded-full" title="Sociedades autorizadas">
+                {establishments.length}
+              </span>
+              <ChevronDown className="h-3.5 w-3.5 text-indigo-600" />
+            </div>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-64">
-            <DropdownMenuLabel className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
-              Tus Sociedades Autorizadas ({establishments.length})
+          <DropdownMenuContent align="start" className="w-80 p-2 shadow-xl border-slate-200">
+            <DropdownMenuLabel className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center justify-between pb-2">
+              <span>Tus Sociedades Autorizadas</span>
+              <span className="bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full text-[10px] font-bold">
+                {establishments.length} disponibles
+              </span>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            {establishments.map((est) => {
-              const isSelected = est.id === activeEstablishment?.id;
-              return (
-                <DropdownMenuItem
-                  key={est.id}
-                  onClick={() => {
-                    setActiveEstablishment(est);
-                    toast.success(`Cambiando a: ${est.app_name || est.name}`);
-                  }}
-                  className={`flex items-center justify-between cursor-pointer py-2 ${
-                    isSelected ? "bg-primary/10 font-bold text-primary" : ""
-                  }`}
-                >
-                  <div className="truncate mr-2">
-                    <p className="text-xs truncate">{est.app_name || est.name}</p>
-                    <p className="text-[10px] text-muted-foreground font-mono">{est.legal_id}</p>
-                  </div>
-                  {isSelected && <Check className="h-4 w-4 text-primary shrink-0" />}
-                </DropdownMenuItem>
-              );
-            })}
+            <div className="space-y-1 mt-1">
+              {establishments.map((est) => {
+                const isSelected = est.id === activeEstablishment?.id;
+                return (
+                  <DropdownMenuItem
+                    key={est.id}
+                    onClick={() => {
+                      setActiveEstablishment(est);
+                      toast.success(`Cambiando a: ${est.app_name || est.name}`);
+                    }}
+                    className={`flex items-center justify-between cursor-pointer p-2.5 rounded-xl transition-all ${
+                      isSelected
+                        ? "bg-indigo-50 border border-indigo-200 text-indigo-900 font-bold"
+                        : "hover:bg-slate-50 text-slate-700"
+                    }`}
+                  >
+                    <div className="truncate mr-2 min-w-0">
+                      <p className="text-xs truncate font-bold text-slate-900">
+                        {est.app_name || est.name}
+                      </p>
+                      <p className="text-[11px] text-slate-500 font-mono mt-0.5">
+                        Cédula: <strong className="text-slate-700">{est.legal_id}</strong>
+                      </p>
+                    </div>
+                    {isSelected ? (
+                      <span className="shrink-0 flex items-center gap-1 text-[11px] font-bold text-indigo-600 bg-indigo-100/80 px-2 py-0.5 rounded-md">
+                        <Check className="h-3.5 w-3.5" /> Activa
+                      </span>
+                    ) : (
+                      <span className="shrink-0 text-[10px] font-semibold text-slate-400 hover:text-indigo-600 border border-slate-200 px-2 py-0.5 rounded-md">
+                        Cambiar
+                      </span>
+                    )}
+                  </DropdownMenuItem>
+                );
+              })}
+            </div>
           </DropdownMenuContent>
         </DropdownMenu>
       ) : (
