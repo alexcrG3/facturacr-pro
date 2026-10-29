@@ -1049,40 +1049,35 @@ function CajasPage() {
                 )}
               </div>
 
-              <div className="rounded-xl border border-border bg-muted/40 p-3 text-[11px] text-muted-foreground space-y-1.5">
-                <p className="font-bold text-foreground">💡 ¿Qué prefieres hacer?</p>
-                <p>
-                  • <strong>Desactivar (Recomendado):</strong> Conserva todas sus facturas, tiquetes y numeraciones consecutivas para reportes del contador y Ministerio de Hacienda, pero oculta la caja para evitar emisiones accidentales.
-                </p>
-                <p>
-                  • <strong>Eliminar Definitivamente:</strong> Borra la terminal por completo.
-                </p>
-                {deleteTargetStats.totalDocs > 0 && (
-                  <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 p-2 text-[10.5px] text-amber-900 dark:text-amber-200">
-                    ⚠️ <strong>Normativa DGT-R-033-2019 de Hacienda:</strong> Las terminales con facturas emitidas deben conservarse para no romper la secuencia consecutiva de 20 dígitos. Se recomienda usar <strong>Solo Desactivar</strong>.
+              {/* Tarjeta Informativa de Decisión */}
+              {deleteTargetStats.totalDocs > 0 ? (
+                <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3.5 text-[11px] text-amber-950 dark:text-amber-200 space-y-2">
+                  <div className="font-bold flex items-center gap-2 text-amber-800 dark:text-amber-400 text-xs">
+                    <Lock className="h-4 w-4" /> Opción Recomendada: Desactivación Protegida
                   </div>
-                )}
-              </div>
-
-              {deleteTargetCaja.branch_code === "001" && deleteTargetCaja.terminal_code === "00001" ? (
-                <div className="rounded-xl border border-destructive/20 bg-destructive/10 p-3 text-[11px] text-destructive font-semibold">
-                  🛡️ La <strong>Caja Principal (001 / 00001)</strong> es obligatoria por requerimiento de la Dirección General de Tributación para todo emisor y no puede ser removida del sistema.
+                  <p className="leading-relaxed">
+                    Por <strong>normativa de Hacienda (Resolución DGT-R-033-2019)</strong>, cualquier terminal que haya emitido comprobantes fiscales queda protegida contra borrado físico para garantizar la secuencia consecutiva de 20 dígitos.
+                  </p>
+                  <p className="font-semibold text-amber-900 dark:text-amber-300">
+                    💡 Al <strong>desactivar</strong> la caja, su historial permanece 100% resguardado para el contador y Hacienda, y se retira automáticamente de la pantalla de cobro para evitar nuevas emisiones.
+                  </p>
                 </div>
               ) : (
-                deleteTargetStats.totalDocs > 0 && (
-                  <div className="space-y-1 pt-1">
-                    <label className="font-semibold text-foreground">
-                      Escribe el nombre <span className="font-mono text-destructive font-bold select-all">{deleteTargetCaja.terminal_name}</span> para confirmar:
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="Escribe el nombre exacto..."
-                      value={deleteConfirmText}
-                      onChange={(e) => setDeleteConfirmText(e.target.value)}
-                      className="h-10 w-full rounded-xl border border-border bg-background px-3 text-xs focus:border-destructive focus:outline-none"
-                    />
-                  </div>
-                )
+                <div className="rounded-xl border border-border bg-muted/40 p-3 text-[11px] text-muted-foreground space-y-1.5">
+                  <p className="font-bold text-foreground">💡 Esta caja no tiene facturas emitidas:</p>
+                  <p>
+                    • <strong>Desactivar:</strong> La oculta temporalmente del punto de cobro.
+                  </p>
+                  <p>
+                    • <strong>Eliminar Definitivamente:</strong> Borra la terminal por completo (permitido porque tiene 0 facturas).
+                  </p>
+                </div>
+              )}
+
+              {deleteTargetCaja.branch_code === "001" && deleteTargetCaja.terminal_code === "00001" && (
+                <div className="rounded-xl border border-destructive/20 bg-destructive/10 p-3 text-[11px] text-destructive font-semibold">
+                  🛡️ La <strong>Caja Principal (001 / 00001)</strong> es obligatoria por requerimiento de la Dirección General de Tributación para todo emisor y no puede ser removida ni desactivada.
+                </div>
               )}
             </div>
 
@@ -1095,34 +1090,58 @@ function CajasPage() {
                 Cancelar
               </button>
 
-              {/* Botón para solo Desactivar */}
+              {/* Si es Caja Principal 001/00001, no se puede desactivar ni eliminar */}
               {!(deleteTargetCaja.branch_code === "001" && deleteTargetCaja.terminal_code === "00001") && (
-                <button
-                  type="button"
-                  disabled={isProcessingDelete}
-                  onClick={() => handleToggleCajaStatus(deleteTargetCaja, false)}
-                  className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-amber-300 bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-400 px-4 py-2.5 font-bold cursor-pointer text-xs disabled:opacity-50"
-                >
-                  {isProcessingDelete ? <Loader2 className="h-4 w-4 animate-spin" /> : <Power className="h-4 w-4 text-amber-600 dark:text-amber-400" />}
-                  Solo Desactivar
-                </button>
-              )}
+                <>
+                  {deleteTargetStats.totalDocs > 0 ? (
+                    // CAJA CON FACTURAS: LA RECOMENDADA (SOLO DESACTIVAR / REACTIVAR)
+                    deleteTargetCaja.is_active === false ? (
+                      <button
+                        type="button"
+                        disabled={isProcessingDelete}
+                        onClick={() => handleToggleCajaStatus(deleteTargetCaja, true)}
+                        className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 font-bold shadow-md shadow-emerald-600/20 cursor-pointer text-xs disabled:opacity-50"
+                      >
+                        {isProcessingDelete ? <Loader2 className="h-4 w-4 animate-spin" /> : <Power className="h-4 w-4" />}
+                        Reactivar Caja
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={isProcessingDelete}
+                        onClick={() => handleToggleCajaStatus(deleteTargetCaja, false)}
+                        className="inline-flex items-center justify-center gap-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white px-5 py-2.5 font-bold shadow-md shadow-amber-500/20 cursor-pointer text-xs disabled:opacity-50"
+                      >
+                        {isProcessingDelete ? <Loader2 className="h-4 w-4 animate-spin" /> : <Power className="h-4 w-4" />}
+                        Desactivar Caja (Recomendado por Hacienda)
+                      </button>
+                    )
+                  ) : (
+                    // CAJA SIN FACTURAS: Permite desactivar o eliminar definitivamente
+                    <>
+                      <button
+                        type="button"
+                        disabled={isProcessingDelete}
+                        onClick={() => handleToggleCajaStatus(deleteTargetCaja, false)}
+                        className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-border px-4 py-2.5 font-bold text-muted-foreground hover:bg-muted cursor-pointer text-xs disabled:opacity-50"
+                      >
+                        {isProcessingDelete ? <Loader2 className="h-4 w-4 animate-spin" /> : <Power className="h-4 w-4" />}
+                        Solo Desactivar
+                      </button>
 
-              {/* Botón para Borrado Definitivo */}
-              <button
-                type="button"
-                disabled={
-                  isProcessingDelete ||
-                  (deleteTargetCaja.branch_code === "001" && deleteTargetCaja.terminal_code === "00001") ||
-                  (deleteTargetStats.totalDocs > 0 &&
-                    deleteConfirmText.trim().toLowerCase() !== deleteTargetCaja.terminal_name.trim().toLowerCase())
-                }
-                onClick={() => handleConfirmPurgeCaja(deleteTargetCaja)}
-                className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-destructive hover:bg-destructive/90 text-destructive-foreground px-4 py-2.5 font-bold shadow-md shadow-destructive/25 cursor-pointer text-xs disabled:opacity-40"
-              >
-                {isProcessingDelete ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                Eliminar Definitivamente
-              </button>
+                      <button
+                        type="button"
+                        disabled={isProcessingDelete}
+                        onClick={() => handleConfirmPurgeCaja(deleteTargetCaja)}
+                        className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-destructive hover:bg-destructive/90 text-destructive-foreground px-4 py-2.5 font-bold shadow-md shadow-destructive/25 cursor-pointer text-xs disabled:opacity-40"
+                      >
+                        {isProcessingDelete ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                        Eliminar Definitivamente
+                      </button>
+                    </>
+                  )}
+                </>
+              )}
             </div>
           </div>
         </div>
