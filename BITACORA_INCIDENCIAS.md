@@ -7,6 +7,34 @@
 
 ---
 
+### [2026-10-29 09:55] - Implementación del Cálculo Automático de Prorrata del IVA (Casillas [114] y [131]) y Auditor de Proporcionalidad (Art. 30 a 34 Ley 9635)
+* **Módulos Afectados:**
+  - `src/components/reports/DeclaraHubSimulator.tsx`
+  - `BITACORA_INCIDENCIAS.md`
+* **Incidencia / Necesidad Reportada:**
+  - El usuario solicitó el Punto 2 de la suite premium: **Cálculo Automático de la Prorrata del IVA**.
+  - En Costa Rica, los negocios con operaciones mixtas (que venden tanto bienes/servicios gravados al 13% o reducidos, como operaciones exentas de IVA) no tienen derecho a deducir el 100% del IVA de sus compras comunes (alquiler, electricidad, internet, servicios). Deben aplicar el **Factor de Proporcionalidad (Prorrata)** estipulado en el Artículo 30 de la Ley del IVA N° 9635.
+  - El cálculo manual suele generar errores aritméticos graves ante Tributación, sanciones e inconsistencias entre el D-104 y la declaración anual de Renta (D-101).
+* **Causa Raíz:**
+  - Los sistemas tradicionales no detectan automáticamente la mezcla de ventas gravadas versus exentas en el período, forzando al contador a calcular la fórmula en Excel aparte y arriesgando multas por sobre-deducción de crédito fiscal.
+* **Cómo se resolvió:**
+  1. **Motor de Cálculo de Prorrata (`DeclaraHubSimulator.tsx`):**
+     - Detección automática de operaciones mixtas: evalúa `ventasConCredito` (13% y reducidas) versus `baseExenta` (exentas/no sujetas).
+     - Cálculo en tiempo real del **Coeficiente de Proporcionalidad**:
+       $$\text{Factor Prorrata (\%)} = \left(\frac{\text{Ventas con Derecho a Crédito}}{\text{Total de Ventas}}\right) \times 100$$
+     - Si no hay ventas exentas, el factor se establece en **100.00% (Crédito Pleno Total)** sin pérdida de IVA.
+     - Si hay ventas exentas, el factor se calcula con 2 decimales y se aplica al crédito fiscal bruto de compras (Casilla [130]).
+  2. **Nuevas Casillas Oficiales del D-104 en Pantalla:**
+     - **Casilla [114]:** Coeficiente de Proporcionalidad aplicable con botón de copia en 1 clic.
+     - **Casilla [131]:** Crédito fiscal real aplicable tras la prorrata (monto que efectivamente descuenta el IVA a pagar).
+     - **Cómputo en Renta:** El IVA no deducible se clasifica automáticamente como gasto deducible para el Impuesto sobre la Renta (D-101).
+  3. **Auditor Visual de Proporcionalidad:**
+     - Tarjeta interactiva con el desglose de ventas con crédito, ventas exentas, crédito acreditable en D-104 y saldo transferido a gasto en Renta.
+     - Resumen contable para WhatsApp actualizado con el desglose oficial de la Casilla [114] y [131].
+* **Prevención:** Mantener la separación de tarifas de ventas en la emisión de comprobantes para que DeclaraHub alimente el coeficiente de proporcionalidad sin intervención humana.
+
+---
+
 ### [2026-10-29 09:45] - Implementación de Aceptador Masivo de Gastos ante Hacienda (Mensaje Receptor CCE/CPCE/RCE) en DeclaraHub
 * **Módulos Afectados:**
   - `src/lib/hacienda/mensaje-receptor.ts` (Nuevo motor de generación y firma XAdES-EPES de Mensaje Receptor)

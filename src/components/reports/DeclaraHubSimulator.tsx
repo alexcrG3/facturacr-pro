@@ -89,8 +89,31 @@ export function DeclaraHubSimulator({
     const totalCreditoFiscal = Math.max(0, credito13 + creditoReducidas - ivaNcCompras);
     const totalComprasNetas = Math.max(0, baseComprasGravadas13 + baseComprasReducidas + baseComprasExentas);
 
-    // 3. LIQUIDACIÓN FINAL
-    const balance = totalDebitoFiscal - totalCreditoFiscal;
+    // 3. PRORRATA DEL IVA (PROPORCIONALIDAD - ART. 30 LEY 9635)
+    const ventasConCredito = baseGravada13 + baseTarifasReducidas;
+    const totalVentasParaProrrata = ventasConCredito + baseExenta;
+
+    let factorProrrata = 100;
+    let tieneProrrataMixta = false;
+
+    if (totalVentasParaProrrata > 0 && baseExenta > 0) {
+      factorProrrata = Number(((ventasConCredito / totalVentasParaProrrata) * 100).toFixed(2));
+      tieneProrrataMixta = true;
+    }
+
+    const creditoFiscalBruto = totalCreditoFiscal;
+    const creditoFiscalProrrateado = tieneProrrataMixta
+      ? (creditoFiscalBruto * factorProrrata) / 100
+      : creditoFiscalBruto;
+    const ivaNoDeducibleGasto = Math.max(0, creditoFiscalBruto - creditoFiscalProrrateado);
+
+    // Crédito fiscal final que efectivamente se aplica en la liquidación de la Casilla [140]/[141]
+    const creditoEfectivoLiquidacion = tieneProrrataMixta
+      ? creditoFiscalProrrateado
+      : totalCreditoFiscal;
+
+    // 4. LIQUIDACIÓN FINAL
+    const balance = totalDebitoFiscal - creditoEfectivoLiquidacion;
     const impuestoAPagar = balance > 0 ? balance : 0;
     const saldoAFavor = balance < 0 ? Math.abs(balance) : 0;
 
@@ -114,6 +137,16 @@ export function DeclaraHubSimulator({
       ivaNcCompras,
       totalCreditoFiscal,
 
+      // Métricas de Prorrata
+      ventasConCredito,
+      totalVentasParaProrrata,
+      factorProrrata,
+      tieneProrrataMixta,
+      creditoFiscalBruto,
+      creditoFiscalProrrateado,
+      ivaNoDeducibleGasto,
+      creditoEfectivoLiquidacion,
+
       impuestoAPagar,
       saldoAFavor,
       balance,
@@ -122,17 +155,26 @@ export function DeclaraHubSimulator({
     };
   }, [comprobantes]);
 
-  const handleCopyCasilla = (codigo: string, valor: number) => {
-    const formatted = Math.round(valor).toString();
+  const handleCopyCasilla = (codigo: string, valor: number, esPorcentaje = false) => {
+    const formatted = esPorcentaje ? valor.toFixed(2) : Math.round(valor).toString();
     navigator.clipboard.writeText(formatted);
     setCopiedCasilla(codigo);
     toast.success(`Casilla [${codigo}] copiada al portapapeles`, {
-      description: `Monto listo para pegar en TRIBU-CR: ₡${formatted}`,
+      description: esPorcentaje
+        ? `Porcentaje listo para pegar en TRIBU-CR: ${formatted}%`
+        : `Monto listo para pegar en TRIBU-CR: ₡${formatted}`,
     });
     setTimeout(() => setCopiedCasilla(null), 2500);
   };
 
   const handleCopyResumenContador = () => {
+    const prorrataInfo = metricasD104.tieneProrrataMixta
+      ? `\n📊 *PRORRATA DEL IVA (PROPORCIONALIDAD):*
+• Coeficiente de Prorrata [Casilla 114]: ${metricasD104.factorProrrata.toFixed(2)}%
+• Crédito Fiscal Aplicable [Casilla 131]: ₡${Math.round(metricasD104.creditoFiscalProrrateado).toLocaleString()}
+• IVA No Deducible (Gasto en Renta D-101): ₡${Math.round(metricasD104.ivaNoDeducibleGasto).toLocaleString()}`
+      : `\n📊 *PRORRATA DEL IVA:* Coeficiente [Casilla 114]: 100.00% (Crédito Pleno)`;
+
     const texto = `📋 *RESUMEN TRIBUTARIO D-104 (DECLARAHUB CR)*
 Empresa: ${empresaNombre}
 Cédula Jurídica: ${empresaCedula}
@@ -148,7 +190,7 @@ Período Fiscal: ${periodoDesde} al ${periodoHasta}
 🔸 *COMPRAS Y GASTOS (CRÉDITO FISCAL):*
 • Total Compras: ₡${Math.round(metricasD104.totalComprasNetas).toLocaleString()}
 • Compras Gravadas 13% [Casilla 121]: ₡${Math.round(metricasD104.baseComprasGravadas13).toLocaleString()}
-👉 *Total Crédito Fiscal [Casilla 130]:* ₡${Math.round(metricasD104.totalCreditoFiscal).toLocaleString()}
+👉 *Total Crédito Fiscal Bruto [Casilla 130]:* ₡${Math.round(metricasD104.totalCreditoFiscal).toLocaleString()}${prorrataInfo}
 
 ⚖️ *LIQUIDACIÓN FINAL D-104:*
 ${
@@ -388,6 +430,45 @@ Generado automáticamente por FacturaOS DeclaraHub.`;
                 </button>
               </div>
             </div>
+
+            {/* Casilla 114: Factor de Proporcionalidad / Prorrata */}
+            <div className="rounded-xl border border-blue-500/30 bg-blue-500/5 p-3 flex items-center justify-between">
+              <div className="space-y-0.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-blue-700 dark:text-blue-300">
+                    CASILLA [114]
+                  </span>
+                  <span
+                    className={`rounded-full px-2 py-0.2 text-[10px] font-bold ${
+                      metricasD104.tieneProrrataMixta
+                        ? "bg-amber-500/20 text-amber-700 dark:text-amber-300"
+                        : "bg-emerald-500/20 text-emerald-700 dark:text-emerald-300"
+                    }`}
+                  >
+                    {metricasD104.tieneProrrataMixta ? "Ventas Mixtas Detectadas" : "Crédito Pleno (100%)"}
+                  </span>
+                </div>
+                <p className="text-xs font-bold text-foreground">COEFICIENTE DE PROPORCIONALIDAD (PRORRATA)</p>
+                <p className="text-[10px] text-muted-foreground">
+                  {metricasD104.tieneProrrataMixta
+                    ? "Ventas gravadas ÷ Ventas totales del período fiscal (Art. 30 Ley 9635)"
+                    : "El 100% de tus ventas tienen derecho pleno a crédito fiscal"}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-base sm:text-lg font-black font-mono tabular-nums text-blue-600 dark:text-blue-400">
+                  {metricasD104.factorProrrata.toFixed(2)}%
+                </span>
+                <button
+                  type="button"
+                  onClick={() => handleCopyCasilla("114", metricasD104.factorProrrata, true)}
+                  className="rounded-md bg-blue-500/20 p-1.5 text-blue-700 hover:bg-blue-500/30 cursor-pointer"
+                  title="Copiar Coeficiente de Prorrata para Casilla 114"
+                >
+                  {copiedCasilla === "114" ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -470,7 +551,7 @@ Generado automáticamente por FacturaOS DeclaraHub.`;
                 <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-amber-700 dark:text-amber-300">
                   CASILLA [130]
                 </span>
-                <p className="text-xs font-black text-foreground">TOTAL CRÉDITO FISCAL DEDUCIBLE (B)</p>
+                <p className="text-xs font-black text-foreground">TOTAL CRÉDITO FISCAL BRUTO (B)</p>
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-base sm:text-lg font-black font-mono tabular-nums text-amber-600 dark:text-amber-400">
@@ -486,6 +567,117 @@ Generado automáticamente por FacturaOS DeclaraHub.`;
                 </button>
               </div>
             </div>
+
+            {/* Casilla 131: Crédito Fiscal por Proporcionalidad */}
+            <div
+              className={`rounded-xl border p-3 flex items-center justify-between ${
+                metricasD104.tieneProrrataMixta
+                  ? "border-2 border-purple-500/40 bg-purple-500/10"
+                  : "border-border bg-background/50"
+              }`}
+            >
+              <div className="space-y-0.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-purple-700 dark:text-purple-300">
+                    CASILLA [131]
+                  </span>
+                  {metricasD104.tieneProrrataMixta && (
+                    <span className="rounded-full bg-purple-500/20 px-2 py-0.2 text-[10px] font-bold text-purple-700 dark:text-purple-300">
+                      Crédito Real Deducible
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs font-bold text-foreground">CRÉDITO FISCAL POR PROPORCIONALIDAD</p>
+                <p className="text-[10px] text-muted-foreground">
+                  {metricasD104.tieneProrrataMixta
+                    ? `Aplica el factor ${metricasD104.factorProrrata.toFixed(2)}%. Resto (${formatCRC(
+                        metricasD104.ivaNoDeducibleGasto
+                      )}) pasa a gasto en Renta.`
+                    : "Equivale al 100% del crédito bruto (sin afectación de ventas exentas)"}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-base sm:text-lg font-black font-mono tabular-nums text-purple-600 dark:text-purple-400">
+                  {formatCRC(metricasD104.creditoFiscalProrrateado)}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => handleCopyCasilla("131", metricasD104.creditoFiscalProrrateado)}
+                  className="rounded-md bg-purple-500/20 p-1.5 text-purple-700 hover:bg-purple-500/30 cursor-pointer"
+                  title="Copiar Crédito Aplicable por Prorrata para Casilla 131"
+                >
+                  {copiedCasilla === "131" ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Auditor de Proporcionalidad y Prorrata Oficial del IVA (Art. 30 Ley 9635) */}
+      <div className="rounded-2xl border border-blue-500/20 bg-card p-5 shadow-soft space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-border pb-3">
+          <div className="flex items-center gap-2.5">
+            <div className="grid h-8 w-8 place-items-center rounded-lg bg-blue-500/10 text-blue-600">
+              <Sparkles className="h-4 w-4" />
+            </div>
+            <div>
+              <h4 className="text-sm font-bold text-foreground">
+                Auditor de Proporcionalidad y Prorrata del IVA (Art. 30 a 34 Ley 9635)
+              </h4>
+              <p className="text-[11px] text-muted-foreground">
+                Regla tributaria para negocios con ventas mixtas (gravadas vs exentas).
+              </p>
+            </div>
+          </div>
+          <span
+            className={`rounded-full px-3 py-1 text-xs font-bold ${
+              metricasD104.tieneProrrataMixta
+                ? "bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30"
+                : "bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30"
+            }`}
+          >
+            {metricasD104.tieneProrrataMixta
+              ? `Factor Aplicable: ${metricasD104.factorProrrata.toFixed(2)}% (Ajuste Requerido)`
+              : "Factor Aplicable: 100.00% (Crédito Pleno)"}
+          </span>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-4 text-xs">
+          <div className="rounded-xl border border-border/70 bg-muted/20 p-3">
+            <span className="text-[11px] text-muted-foreground block">Ventas con Crédito Pleno</span>
+            <span className="text-sm font-bold font-mono text-foreground">
+              {formatCRC(metricasD104.ventasConCredito)}
+            </span>
+            <p className="text-[10px] text-muted-foreground mt-0.5">Tarifa 13% + Reducidas</p>
+          </div>
+
+          <div className="rounded-xl border border-border/70 bg-muted/20 p-3">
+            <span className="text-[11px] text-muted-foreground block">Ventas Exentas / No Sujetas</span>
+            <span className="text-sm font-bold font-mono text-amber-600">
+              {formatCRC(metricasD104.baseExenta)}
+            </span>
+            <p className="text-[10px] text-muted-foreground mt-0.5">Sin derecho a crédito</p>
+          </div>
+
+          <div className="rounded-xl border border-purple-500/20 bg-purple-500/5 p-3">
+            <span className="text-[11px] text-purple-700 dark:text-purple-300 block font-semibold">
+              Crédito D-104 [Casilla 131]
+            </span>
+            <span className="text-sm font-bold font-mono text-purple-600 dark:text-purple-400">
+              {formatCRC(metricasD104.creditoFiscalProrrateado)}
+            </span>
+            <p className="text-[10px] text-muted-foreground mt-0.5">Se descuenta del IVA a pagar</p>
+          </div>
+
+          <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-3">
+            <span className="text-[11px] text-blue-700 dark:text-blue-300 block font-semibold">
+              Gasto en Renta (D-101)
+            </span>
+            <span className="text-sm font-bold font-mono text-blue-600 dark:text-blue-400">
+              {formatCRC(metricasD104.ivaNoDeducibleGasto)}
+            </span>
+            <p className="text-[10px] text-muted-foreground mt-0.5">IVA no deducible deducible en Renta</p>
           </div>
         </div>
       </div>
