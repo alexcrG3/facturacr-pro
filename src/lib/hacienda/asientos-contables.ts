@@ -754,7 +754,8 @@ export function exportarExcelAsientos(paquete: PaqueteAsientos) {
 }
 
 /**
- * Exporta el asiento en formato CSV para Softland ERP
+ * Exporta el asiento en formato CSV para Softland ERP con BOM UTF-8 (\uFEFF)
+ * para garantizar compatibilidad con Excel sin caracteres extraños (mojibake).
  */
 export function exportarCsvSoftland(asiento: AsientoContable, fecha: string): string {
   const lineas = ["CUENTA;CENTRO_COSTO;FECHA;REFERENCIA;DESCRIPCION;DEBITO;CREDITO"];
@@ -764,11 +765,11 @@ export function exportarCsvSoftland(asiento: AsientoContable, fecha: string): st
     const desc = l.concepto.replace(/;/g, ",").slice(0, 60);
     lineas.push(`${cuentaLimpia};${centro};${fecha};${l.referencia};"${desc}";${l.debe.toFixed(2)};${l.haber.toFixed(2)}`);
   });
-  return lineas.join("\r\n");
+  return "\uFEFF" + lineas.join("\r\n");
 }
 
 /**
- * Exporta el asiento en formato CSV para QuickBooks
+ * Exporta el asiento en formato CSV para QuickBooks con BOM UTF-8 (\uFEFF)
  */
 export function exportarCsvQuickBooks(asiento: AsientoContable, fecha: string): string {
   const lineas = ["Date,Journal No,Account,Description,Debit,Credit,Class"];
@@ -777,7 +778,7 @@ export function exportarCsvQuickBooks(asiento: AsientoContable, fecha: string): 
     const acc = `"${l.cuenta} ${l.nombreCuenta}"`;
     lineas.push(`${fecha},POL-${fecha.slice(0, 7)},${acc},"${desc}",${l.debe > 0 ? l.debe.toFixed(2) : ""},${l.haber > 0 ? l.haber.toFixed(2) : ""},"${l.centroCosto}"`);
   });
-  return lineas.join("\r\n");
+  return "\uFEFF" + lineas.join("\r\n");
 }
 
 /**

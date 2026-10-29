@@ -101,7 +101,10 @@ export function AsientosContablesModal({
   const handleDescargarSoftlandCsv = () => {
     try {
       const csv = exportarCsvSoftland(asientoSeleccionado, periodoHasta);
-      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      // Incluir BOM UTF-8 (\uFEFF) para que Excel lo abra sin problemas de codificación (acentos, tildes, ñ)
+      const blob = new Blob([csv.startsWith("\uFEFF") ? csv : "\uFEFF" + csv], {
+        type: "text/csv;charset=utf-8;",
+      });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
@@ -120,7 +123,10 @@ export function AsientosContablesModal({
   const handleDescargarQuickbooksCsv = () => {
     try {
       const csv = exportarCsvQuickBooks(asientoSeleccionado, periodoHasta);
-      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      // Incluir BOM UTF-8 (\uFEFF) para que Excel lo abra sin problemas de codificación (acentos, tildes, ñ)
+      const blob = new Blob([csv.startsWith("\uFEFF") ? csv : "\uFEFF" + csv], {
+        type: "text/csv;charset=utf-8;",
+      });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;

@@ -264,5 +264,5 @@ export function exportarTextoHaciendaD151(resultado: ResultadoD151): string {
     );
   });
 
-  return lineas.join("\n");
+  return "\uFEFF" + lineas.join("\r\n");
 }
