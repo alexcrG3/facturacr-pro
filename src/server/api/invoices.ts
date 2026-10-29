@@ -38,6 +38,7 @@ interface EmitInvoicePayload {
   docType?: string; // "01" | "04" | "03" | "02"
   branchCode?: string; // "001"
   terminalCode?: string; // "00001"
+  economicActivity?: string; // Código de actividad económica Hacienda (ej: "829900")
   paymentMethod?: string; // "01" | "02" | "04"
   saleCondition?: string; // "01" | "02"
   currency?: string; // "CRC" | "USD"
@@ -301,7 +302,7 @@ export async function handleInvoiceEmit(request: Request): Promise<Response> {
             : undefined,
         }
       : undefined,
-    codigoActividad: (establishment.economic_activity_code || "620901").replace(/\D/g, ""),
+    codigoActividad: (body.economicActivity || establishment.economic_activity_code || "829900").replace(/\D/g, ""),
     condicionVenta: saleCondition,
     mediosPago: [paymentMethod],
     moneda: currency as "CRC" | "USD",
