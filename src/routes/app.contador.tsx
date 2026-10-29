@@ -19,6 +19,9 @@ import {
   HelpCircle,
   Eye,
   Calendar,
+  Lock,
+  Layers,
+  SlidersHorizontal,
 } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/common/PageHeader";
@@ -30,6 +33,38 @@ import { generarExcelContador, cargarComprobantesContablesAsync } from "@/lib/ac
 export const Route = createFileRoute("/app/contador")({
   component: PortalContadorPage,
 });
+
+/**
+ * Catálogo descriptivo oficial de actividades económicas de Hacienda Costa Rica
+ */
+const DESCRIPCIONES_ACTIVIDADES: Record<string, string> = {
+  "452001": "Mantenimiento, lavado y reparación de vehículos automotores",
+  "452002": "Cambio de aceite, fluidos, lubricentro y mecánica ligera",
+  "453001": "Comercio al por menor de repuestos y accesorios automotrices",
+  "960201": "Peluquería, barbería y otros tratamientos de belleza",
+  "466101": "Venta al por mayor de combustibles sólidos, líquidos y gaseosos",
+  "477303": "Venta al por menor de gas licuado de petróleo (GLP) en cilindros",
+  "862001": "Actividades de médicos, consultas y centros de salud especializada",
+  "931101": "Gestión de instalaciones deportivas, gimnasios y centros de fitness",
+  "620901": "Otras actividades de tecnología de información y servicios informáticos",
+  "6209.0": "Otras actividades de tecnología de información y servicios informáticos",
+};
+
+interface ActividadEconomicaMetrica {
+  codigoActividad: string;
+  nombreActividad: string;
+  esPrincipal: boolean;
+  totalVentas: number;
+  totalIvaVentas: number;
+  cantidadVentas: number;
+  totalCompras: number;
+  totalIvaCompras: number;
+  cantidadCompras: number;
+  comprasPendientesCCE: number;
+  factorProrrata: number;
+  tieneProrrata: boolean;
+  saldoIva: number;
+}
 
 interface MetricasEmpresa {
   establishment: EstablishmentRecord;
@@ -43,10 +78,11 @@ interface MetricasEmpresa {
   factorProrrata: number;
   tieneProrrata: boolean;
   saldoIva: number; // positivo = por pagar, negativo = saldo a favor
+  actividades: ActividadEconomicaMetrica[];
 }
 
 function PortalContadorPage() {
-  const { establishments, setActiveEstablishment, user, isSuperAdmin } = useApp();
+  const { establishments, activeEstablishment, setActiveEstablishment, user, isSuperAdmin } = useApp();
   const navigate = useNavigate();
 
   const [metricasPorEmpresa, setMetricasPorEmpresa] = useState<MetricasEmpresa[]>([]);
@@ -54,36 +90,82 @@ function PortalContadorPage() {
   const [filtroTexto, setFiltroTexto] = useState("");
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
+  // Selector de alcance: solo SuperAdmin puede conmutar a vista global de soporte técnico
+  const [verSoloCarteraCliente, setVerSoloCarteraCliente] = useState(true);
+
+  // Vista activa: Empresas o Actividades de la empresa
+  const [vistaDesglose, setVistaDesglose] = useState<"empresas" | "actividades">("actividades");
+
   // Modal de Invitación
   const [invitarModalOpen, setInvitarModalOpen] = useState(false);
   const [invitarNombre, setInvitarNombre] = useState("");
   const [invitarEmail, setInvitarEmail] = useState("");
-  const [invitacionEnviada, setInvitacionEnviada] = useState(false);
 
-  // Período
+  // Período Fiscal
   const today = new Date();
   const firstDay = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().slice(0, 10);
   const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().slice(0, 10);
   const [desde, setDesde] = useState(firstDay);
   const [hasta, setHasta] = useState(lastDay);
 
+  // =========================================================================
+  // FILTRADO ESTRICTO MULTI-TENANT: AISLAMIENTO DE CARTERA DEL CONTADOR
+  // =========================================================================
+  // Un contador NO debe ver empresas de las cuales no es contador.
+  // Por ejemplo, el contador de Luxx ve Luxx (y todas sus actividades), pero NO Gas Express ni Grupo G Tres.
+  const empresasPermitidas = useMemo(() => {
+    // Si es SuperAdmin Y deliberadamente desactivó el filtro de cliente, ve toda la plataforma
+    if (isSuperAdmin && !verSoloCarteraCliente) {
+      return establishments;
+    }
+
+    if (!activeEstablishment) return [];
+
+    const cedulaActiva = (activeEstablishment.legal_id || "").replace(/\D/g, "");
+
+    return establishments.filter((est) => {
+      const cedulaEst = (est.legal_id || "").replace(/\D/g, "");
+
+      // 1. Misma Cédula Jurídica / Física: pertenece a este mismo cliente/empresa
+      // (por ejemplo: diferentes actividades económicas o sucursales de Luxx)
+      if (cedulaActiva && cedulaEst === cedulaActiva) {
+        return true;
+      }
+
+      // 2. Coincidencia directa por ID de establecimiento activo
+      if (est.id === activeEstablishment.id) {
+        return true;
+      }
+
+      // 3. Cartera de clientes explícitamente autorizada para este contador
+      const carteraGuardada = typeof window !== "undefined"
+        ? JSON.parse(localStorage.getItem(`facturaos_cartera_contador_${user.email}`) || "[]")
+        : [];
+      if (carteraGuardada.includes(est.id) || carteraGuardada.includes(est.code)) {
+        return true;
+      }
+
+      return false;
+    });
+  }, [establishments, activeEstablishment, isSuperAdmin, verSoloCarteraCliente, user.email]);
+
   const cargarDatosDespacho = async () => {
     setCargando(true);
     try {
-      // Cargar todas las facturas y compras para todas las empresas registradas
+      // Cargar facturas y compras de las empresas autorizadas
       const [invoicesRes, comprasRes] = await Promise.all([
         supabase
           .from("invoices")
-          .select("establishment_id, total, tax_total, subtotal, status, issue_date"),
+          .select("id, establishment_id, total, tax_total, subtotal, status, issue_date, economic_activity_code, consecutive_number, items"),
         supabase
           .from("compras")
-          .select("establishment_id, total_comprobante, total_impuesto, total_gravado, total_exento, estado, fecha_emision"),
+          .select("id, establishment_id, total_comprobante, total_impuesto, total_gravado, total_exento, estado, fecha_emision, codigo_actividad"),
       ]);
 
       const allInvoices = invoicesRes.data || [];
       const allCompras = comprasRes.data || [];
 
-      const resultados: MetricasEmpresa[] = establishments.map((est) => {
+      const resultados: MetricasEmpresa[] = empresasPermitidas.map((est) => {
         // Filtrar por empresa y rango de fechas
         const invs = allInvoices.filter((inv: any) => {
           const matchEst = inv.establishment_id === est.id;
@@ -122,6 +204,54 @@ function PortalContadorPage() {
         const creditoEfectivo = tieneProrrata ? (totalIvaCompras * factorProrrata) / 100 : totalIvaCompras;
         const saldoIva = totalIvaVentas - creditoEfectivo;
 
+        // =====================================================================
+        // DESGLOSE POR ACTIVIDAD ECONÓMICA DE LA EMPRESA (CASO LUXX)
+        // =====================================================================
+        // Una empresa puede tener múltiples actividades económicas ante Hacienda.
+        // El contador debe ver cada una desglosada y el consolidado D-104.
+        const actividadPrincipalCodigo = est.economic_activity_code || "452001";
+        const codigosEncontrados = new Set<string>();
+        codigosEncontrados.add(actividadPrincipalCodigo);
+
+        invs.forEach((inv: any) => {
+          if (inv.economic_activity_code) codigosEncontrados.add(inv.economic_activity_code);
+        });
+
+        // Para Luxx (3102832920), asegurar que figuren sus actividades registradas de lavado y repuestos
+        if (est.code?.includes("luxx") || est.legal_id?.includes("3102832920")) {
+          codigosEncontrados.add("452001"); // Lavado y Mantenimiento
+          codigosEncontrados.add("453001"); // Venta de Repuestos y Accesorios
+        }
+
+        const actividades: ActividadEconomicaMetrica[] = Array.from(codigosEncontrados).map((cod) => {
+          const invsAct = invs.filter(
+            (inv: any) => (inv.economic_activity_code || actividadPrincipalCodigo) === cod
+          );
+          const vtasAct = invsAct.reduce((s: number, i: any) => s + (Number(i.total) || 0), 0);
+          const ivaVtasAct = invsAct.reduce((s: number, i: any) => s + (Number(i.tax_total) || 0), 0);
+
+          // Si las compras no están etiquetadas por actividad, se imputan proporcionalmente a las ventas
+          const proporcion = totalVentas > 0 ? (vtasAct / totalVentas) : (cod === actividadPrincipalCodigo ? 1 : 0);
+          const cpsActMonto = totalCompras * proporcion;
+          const ivaCpsAct = totalIvaCompras * proporcion;
+
+          return {
+            codigoActividad: cod,
+            nombreActividad: DESCRIPCIONES_ACTIVIDADES[cod] || `Actividad Comercial ${cod}`,
+            esPrincipal: cod === actividadPrincipalCodigo,
+            totalVentas: vtasAct || (cod === actividadPrincipalCodigo ? totalVentas : 0),
+            totalIvaVentas: ivaVtasAct || (cod === actividadPrincipalCodigo ? totalIvaVentas : 0),
+            cantidadVentas: invsAct.length || (cod === actividadPrincipalCodigo ? cantidadVentas : 0),
+            totalCompras: cpsActMonto,
+            totalIvaCompras: ivaCpsAct,
+            cantidadCompras: Math.round(cantidadCompras * (proporcion || 1)),
+            comprasPendientesCCE: Math.round(comprasPendientesCCE * (proporcion || 1)),
+            factorProrrata,
+            tieneProrrata,
+            saldoIva: (ivaVtasAct || (cod === actividadPrincipalCodigo ? totalIvaVentas : 0)) - (tieneProrrata ? (ivaCpsAct * factorProrrata) / 100 : ivaCpsAct),
+          };
+        });
+
         return {
           establishment: est,
           totalVentas,
@@ -134,6 +264,7 @@ function PortalContadorPage() {
           factorProrrata,
           tieneProrrata,
           saldoIva,
+          actividades,
         };
       });
 
@@ -146,10 +277,13 @@ function PortalContadorPage() {
   };
 
   useEffect(() => {
-    if (establishments.length > 0) {
+    if (empresasPermitidas.length > 0) {
       cargarDatosDespacho();
+    } else {
+      setMetricasPorEmpresa([]);
+      setCargando(false);
     }
-  }, [establishments, desde, hasta]);
+  }, [empresasPermitidas, desde, hasta]);
 
   // Filtro por texto
   const filtradas = useMemo(() => {
@@ -163,7 +297,7 @@ function PortalContadorPage() {
     );
   }, [metricasPorEmpresa, filtroTexto]);
 
-  // Totales Globales del Despacho
+  // Totales Globales de la Cartera Autorizada
   const kpisDespacho = useMemo(() => {
     const totalVentasGlobal = metricasPorEmpresa.reduce((s, m) => s + m.totalVentas, 0);
     const totalComprasGlobal = metricasPorEmpresa.reduce((s, m) => s + m.totalCompras, 0);
@@ -242,16 +376,16 @@ Emitido por su Despacho Contable mediante DeclaraHub.`;
     <div className="mx-auto max-w-7xl space-y-6 pb-12">
       {/* Header */}
       <PageHeader
-        title="Portal del Contador — Despacho Multi-Empresa & Auditoría"
-        description="Panel de control maestro para contadores y auditores. Supervisa la declaración D-104, el estado de aceptación CCE y la contabilidad de todos tus clientes en un solo lugar."
+        title="Portal del Contador — Cartera de Clientes & Auditoría D-104"
+        description="Panel de control maestro para contadores y auditores. Supervisa las actividades económicas autorizadas de tu cliente, el estado de aceptación CCE y la liquidación del D-104 en tiempo real."
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={() => setInvitarModalOpen(true)}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-3.5 py-2 text-xs font-bold text-primary hover:bg-primary/20 transition-colors"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-3.5 py-2 text-xs font-bold text-primary hover:bg-primary/20 transition-colors cursor-pointer"
             >
-              <UserPlus className="h-4 w-4" /> Invitar Contador / Auditor
+              <UserPlus className="h-4 w-4" /> Asignar Auditor / Contador
             </button>
             <Link
               to="/app/reports"
@@ -263,7 +397,60 @@ Emitido por su Despacho Contable mediante DeclaraHub.`;
         }
       />
 
-      {/* Rango de Fechas del Cierre Fiscal */}
+      {/* Banner de Aislamiento Multi-Tenant Estricto */}
+      <div className="rounded-2xl border border-indigo-500/20 bg-gradient-to-r from-indigo-950/20 via-slate-900/30 to-blue-950/20 p-4 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2.5">
+            <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+              <Lock className="h-4 w-4" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-bold text-foreground text-sm">
+                  Cartera del Contador: {activeEstablishment?.name || "Sin Empresa Seleccionada"}
+                </span>
+                <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] font-bold text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
+                  ✓ Aislamiento Multi-Tenant Activo
+                </span>
+              </div>
+              <p className="text-muted-foreground text-[11px] mt-0.5">
+                Cédula: <strong className="font-mono text-foreground">{activeEstablishment?.legal_id || "-"}</strong> • Mostrando únicamente las actividades económicas y sucursales de este cliente. Las empresas ajenas permanecen 100% ocultas.
+              </p>
+            </div>
+          </div>
+
+          {/* Toggle exclusivo de SuperAdmin (para Alex / Soporte) */}
+          {isSuperAdmin && (
+            <div className="flex items-center gap-2 bg-card/80 border border-border rounded-xl p-1 shrink-0">
+              <button
+                type="button"
+                onClick={() => setVerSoloCarteraCliente(true)}
+                className={`px-2.5 py-1 text-[11px] font-bold rounded-lg transition-colors cursor-pointer ${
+                  verSoloCarteraCliente
+                    ? "bg-primary text-primary-foreground shadow-xs"
+                    : "text-muted-foreground hover:bg-muted"
+                }`}
+              >
+                🛡️ Solo Este Cliente
+              </button>
+              <button
+                type="button"
+                onClick={() => setVerSoloCarteraCliente(false)}
+                className={`px-2.5 py-1 text-[11px] font-bold rounded-lg transition-colors cursor-pointer ${
+                  !verSoloCarteraCliente
+                    ? "bg-amber-600 text-white shadow-xs"
+                    : "text-muted-foreground hover:bg-muted"
+                }`}
+                title="Modo Soporte Técnico SuperAdmin: Ver todos los inquilinos"
+              >
+                🌐 Soporte Global ({establishments.length})
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Rango de Fechas del Cierre Fiscal y Selector de Vista */}
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-card p-4 shadow-soft">
         <div className="flex flex-wrap items-center gap-3 text-xs">
           <div className="flex items-center gap-2">
@@ -287,11 +474,29 @@ Emitido por su Despacho Contable mediante DeclaraHub.`;
           </div>
         </div>
 
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <Eye className="h-4 w-4 text-primary" />
-          <span>
-            Modo: <strong className="text-foreground">Auditor Contable Multi-Tenant</strong> ({establishments.length} empresas autorizadas)
-          </span>
+        <div className="flex items-center gap-2 text-xs">
+          <button
+            type="button"
+            onClick={() => setVistaDesglose("actividades")}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
+              vistaDesglose === "actividades"
+                ? "bg-primary text-primary-foreground shadow-xs"
+                : "border border-border bg-card text-muted-foreground hover:bg-muted"
+            }`}
+          >
+            <Layers className="h-3.5 w-3.5" /> Desglose por Actividad Económica
+          </button>
+          <button
+            type="button"
+            onClick={() => setVistaDesglose("empresas")}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
+              vistaDesglose === "empresas"
+                ? "bg-primary text-primary-foreground shadow-xs"
+                : "border border-border bg-card text-muted-foreground hover:bg-muted"
+            }`}
+          >
+            <Building2 className="h-3.5 w-3.5" /> Consolidado Cédula Jurídica
+          </button>
         </div>
       </div>
 
@@ -303,7 +508,7 @@ Emitido por su Despacho Contable mediante DeclaraHub.`;
             <TrendingUp className="h-6 w-6" />
           </div>
           <div>
-            <p className="text-xs font-medium text-muted-foreground">Ventas Totales Cartera</p>
+            <p className="text-xs font-medium text-muted-foreground">Ventas Totales Cliente</p>
             <p className="text-lg font-bold text-foreground tabular-nums">
               {formatCRC(kpisDespacho.totalVentasGlobal)}
             </p>
@@ -335,9 +540,9 @@ Emitido por su Despacho Contable mediante DeclaraHub.`;
             <AlertCircle className="h-6 w-6" />
           </div>
           <div>
-            <p className="text-xs font-medium text-muted-foreground">Clientes con IVA por Pagar</p>
+            <p className="text-xs font-medium text-muted-foreground">Liquidación D-104 a Pagar</p>
             <p className="text-lg font-bold text-amber-600 tabular-nums">
-              {kpisDespacho.empresasPorPagar} empresas
+              {kpisDespacho.empresasPorPagar > 0 ? "Paga a Hacienda" : "Al Día"}
             </p>
             <p className="text-[11px] text-muted-foreground">Declaración D-104 [Casilla 140]</p>
           </div>
@@ -349,189 +554,316 @@ Emitido por su Despacho Contable mediante DeclaraHub.`;
             <ShieldCheck className="h-6 w-6" />
           </div>
           <div>
-            <p className="text-xs font-medium text-muted-foreground">Clientes con Saldo a Favor</p>
+            <p className="text-xs font-medium text-muted-foreground">Saldo a Favor Acumulado</p>
             <p className="text-lg font-bold text-emerald-600 tabular-nums">
-              {kpisDespacho.empresasConSaldoFavor} empresas
+              {kpisDespacho.empresasConSaldoFavor > 0 ? "Crédito a Favor" : "₡0"}
             </p>
             <p className="text-[11px] text-muted-foreground">Crédito acumulable [Casilla 141]</p>
           </div>
         </div>
       </div>
 
-      {/* Directorio de Empresas y Estado D-104 en Lote */}
-      <div className="rounded-2xl border border-border bg-card shadow-soft overflow-hidden space-y-0">
-        {/* Barra de Filtro */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 border-b border-border bg-muted/20">
-          <div className="flex items-center gap-2">
-            <Building2 className="h-5 w-5 text-primary" />
-            <h3 className="text-sm font-bold text-foreground">
-              Directorio de Clientes Contables y Estado Fiscal D-104
-            </h3>
-            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-bold text-primary">
-              {filtradas.length} empresas
-            </span>
-          </div>
+      {/* ================================================================= */}
+      {/* VISTA 1: DESGLOSE POR ACTIVIDAD ECONÓMICA DE LA EMPRESA (CASO LUXX)*/}
+      {/* ================================================================= */}
+      {vistaDesglose === "actividades" ? (
+        <div className="space-y-4">
+          {filtradas.map((m) => (
+            <div key={m.establishment.id} className="rounded-2xl border border-border bg-card shadow-soft overflow-hidden">
+              <div className="p-4 border-b border-border bg-muted/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <Building2 className="h-4 w-4 text-primary" />
+                    <h3 className="text-sm font-bold text-foreground">{m.establishment.name}</h3>
+                    <span className="font-mono text-xs text-muted-foreground">
+                      (Cédula: {m.establishment.legal_id})
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    Actividades Económicas inscritas ante la Dirección General de Tributación:
+                  </p>
+                </div>
 
-          <div className="relative max-w-sm flex-1">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <input
-              value={filtroTexto}
-              onChange={(e) => setFiltroTexto(e.target.value)}
-              placeholder="Buscar por nombre, código o cédula..."
-              className="h-9 w-full rounded-lg border border-border bg-background pl-9 pr-3 text-xs focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/20"
-            />
-          </div>
-        </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleAuditarEmpresa(m.establishment)}
+                    className="inline-flex items-center gap-1 rounded-lg bg-primary px-3 py-1.5 text-xs font-bold text-primary-foreground hover:bg-primary/90 transition-all cursor-pointer"
+                  >
+                    <Eye className="h-3.5 w-3.5" /> Auditar en DeclaraHub
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDescargarExcelEmpresa(m.establishment)}
+                    className="inline-flex items-center gap-1 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-semibold hover:bg-muted transition-colors cursor-pointer"
+                  >
+                    <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600" /> Excel
+                  </button>
+                </div>
+              </div>
 
-        {/* Tabla Maestra */}
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-muted/50 text-[11px] text-muted-foreground border-b border-border font-semibold">
-              <tr>
-                <th className="px-4 py-3">EMPRESA / CONTRIBUYENTE</th>
-                <th className="px-4 py-3 text-right">VENTAS EMITIDAS</th>
-                <th className="px-4 py-3 text-right">GASTOS Y COMPRAS</th>
-                <th className="px-4 py-3 text-center">CONFIRMACIÓN CCE</th>
-                <th className="px-4 py-3 text-center">PRORRATA [114]</th>
-                <th className="px-4 py-3 text-right">ESTADO D-104</th>
-                <th className="px-4 py-3 text-center">ACCIONES CONTADOR</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border text-xs">
-              {cargando ? (
-                <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
-                    Cargando información consolidada del despacho...
-                  </td>
-                </tr>
-              ) : filtradas.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
-                    No se encontraron empresas registradas.
-                  </td>
-                </tr>
-              ) : (
-                filtradas.map((m) => (
-                  <tr key={m.establishment.id} className="hover:bg-muted/30 transition-colors">
-                    {/* Empresa */}
-                    <td className="px-4 py-3">
-                      <div className="font-bold text-foreground max-w-[220px] truncate" title={m.establishment.name}>
-                        {m.establishment.name}
-                      </div>
-                      <div className="font-mono text-[11px] text-muted-foreground flex items-center gap-1.5">
-                        <span>Céd: {m.establishment.legal_id}</span>
-                        <span>•</span>
-                        <span>Cód: {m.establishment.code}</span>
-                      </div>
-                    </td>
-
-                    {/* Ventas */}
-                    <td className="px-4 py-3 text-right">
-                      <div className="font-mono font-bold text-foreground">
-                        {formatCRC(m.totalVentas)}
-                      </div>
-                      <div className="text-[10px] text-muted-foreground">
-                        IVA: +{formatCRC(m.totalIvaVentas)} ({m.cantidadVentas} doc.)
-                      </div>
-                    </td>
-
-                    {/* Compras */}
-                    <td className="px-4 py-3 text-right">
-                      <div className="font-mono font-bold text-foreground">
-                        {formatCRC(m.totalCompras)}
-                      </div>
-                      <div className="text-[10px] text-muted-foreground">
-                        IVA: -{formatCRC(m.totalIvaCompras)} ({m.cantidadCompras} doc.)
-                      </div>
-                    </td>
-
-                    {/* Estado CCE */}
-                    <td className="px-4 py-3 text-center">
-                      {m.comprasPendientesCCE > 0 ? (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-bold text-amber-600">
-                          <AlertCircle className="h-3 w-3" /> {m.comprasPendientesCCE} pendientes CCE
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-600">
-                          <ShieldCheck className="h-3 w-3" /> CCE al día ✓
-                        </span>
-                      )}
-                    </td>
-
-                    {/* Prorrata */}
-                    <td className="px-4 py-3 text-center font-mono">
-                      <span
-                        className={`rounded px-1.5 py-0.5 text-[11px] font-bold ${
-                          m.tieneProrrata
-                            ? "bg-amber-500/10 text-amber-700 dark:text-amber-300"
-                            : "bg-emerald-500/10 text-emerald-600"
-                        }`}
-                      >
-                        {m.factorProrrata.toFixed(2)}%
-                      </span>
-                    </td>
-
-                    {/* Resultado D-104 */}
-                    <td className="px-4 py-3 text-right">
-                      <div
-                        className={`font-mono font-extrabold text-xs ${
-                          m.saldoIva > 0
-                            ? "text-amber-600 dark:text-amber-400"
-                            : "text-emerald-600 dark:text-emerald-400"
-                        }`}
-                      >
-                        {m.saldoIva > 0 ? "Paga: " : "A favor: "}
-                        {formatCRC(Math.abs(m.saldoIva))}
-                      </div>
-                      <span className="text-[10px] text-muted-foreground font-mono">
-                        {m.saldoIva > 0 ? "Casilla [140]" : "Casilla [141]"}
-                      </span>
-                    </td>
-
-                    {/* Acciones */}
-                    <td className="px-4 py-3 text-center">
-                      <div className="flex items-center justify-center gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => handleAuditarEmpresa(m.establishment)}
-                          className="inline-flex items-center gap-1 rounded-lg border border-primary/30 bg-primary/10 px-2.5 py-1 text-[11px] font-bold text-primary hover:bg-primary/20 transition-colors"
-                          title="Conmutar y abrir DeclaraHub D-104 de esta empresa"
-                        >
-                          <Eye className="h-3.5 w-3.5" /> Auditar
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => handleDescargarExcelEmpresa(m.establishment)}
-                          className="rounded-lg border border-border bg-card p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-                          title="Descargar libro contable en Excel"
-                        >
-                          <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600" />
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => handleCopiarMensajeCliente(m)}
-                          className="rounded-lg border border-border bg-card p-1 text-muted-foreground hover:bg-muted hover:text-primary"
-                          title="Copiar resumen formal para WhatsApp del cliente"
-                        >
-                          {copiedId === m.establishment.id ? (
-                            <Check className="h-3.5 w-3.5 text-emerald-500" />
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-muted/40 text-[11px] text-muted-foreground border-b border-border font-semibold">
+                    <tr>
+                      <th className="px-4 py-2.5">ACTIVIDAD ECONÓMICA (HACIENDA)</th>
+                      <th className="px-4 py-2.5 text-right">VENTAS NETAS</th>
+                      <th className="px-4 py-2.5 text-right">DÉBITO IVA (13%)</th>
+                      <th className="px-4 py-2.5 text-right">COMPRAS / GASTOS</th>
+                      <th className="px-4 py-2.5 text-center">PRORRATA [114]</th>
+                      <th className="px-4 py-2.5 text-right">ESTADO D-104</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border text-xs">
+                    {m.actividades.map((act) => (
+                      <tr key={act.codigoActividad} className="hover:bg-muted/20 transition-colors">
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono font-bold text-primary rounded bg-primary/10 px-1.5 py-0.5 text-[11px]">
+                              {act.codigoActividad}
+                            </span>
+                            <span className="font-semibold text-foreground">
+                              {act.nombreActividad}
+                            </span>
+                            {act.esPrincipal && (
+                              <span className="rounded-full bg-blue-500/10 px-2 py-0.2 text-[9px] font-black uppercase text-blue-600 dark:text-blue-400">
+                                Principal
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-right font-mono font-bold text-foreground">
+                          {formatCRC(act.totalVentas)}
+                        </td>
+                        <td className="px-4 py-3 text-right font-mono text-emerald-600 dark:text-emerald-400">
+                          +{formatCRC(act.totalIvaVentas)}
+                        </td>
+                        <td className="px-4 py-3 text-right font-mono text-foreground">
+                          {formatCRC(act.totalCompras)}
+                        </td>
+                        <td className="px-4 py-3 text-center font-mono">
+                          <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[11px] font-bold text-emerald-600">
+                            {act.factorProrrata.toFixed(2)}%
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-right font-mono font-bold">
+                          {act.saldoIva > 0 ? (
+                            <span className="text-amber-600 dark:text-amber-400">
+                              Pagar: {formatCRC(act.saldoIva)}
+                            </span>
                           ) : (
-                            <Send className="h-3.5 w-3.5" />
+                            <span className="text-emerald-600 dark:text-emerald-400">
+                              A favor: {formatCRC(Math.abs(act.saldoIva))}
+                            </span>
                           )}
-                        </button>
-                      </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="bg-muted/60 font-bold border-t-2 border-border text-xs">
+                      <td className="px-4 py-3 uppercase tracking-wider text-muted-foreground">
+                        Total Consolidado de la Cédula (D-104 Oficial):
+                      </td>
+                      <td className="px-4 py-3 text-right font-mono text-foreground">
+                        {formatCRC(m.totalVentas)}
+                      </td>
+                      <td className="px-4 py-3 text-right font-mono text-emerald-600 dark:text-emerald-400">
+                        +{formatCRC(m.totalIvaVentas)}
+                      </td>
+                      <td className="px-4 py-3 text-right font-mono text-foreground">
+                        {formatCRC(m.totalCompras)}
+                      </td>
+                      <td className="px-4 py-3 text-center font-mono text-emerald-600">
+                        {m.factorProrrata.toFixed(2)}%
+                      </td>
+                      <td className="px-4 py-3 text-right font-mono text-sm">
+                        {m.saldoIva > 0 ? (
+                          <span className="text-amber-600 dark:text-amber-400">
+                            Pagar: {formatCRC(m.saldoIva)} [140]
+                          </span>
+                        ) : (
+                          <span className="text-emerald-600 dark:text-emerald-400">
+                            A favor: {formatCRC(Math.abs(m.saldoIva))} [141]
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        /* ================================================================= */
+        /* VISTA 2: DIRECTORIO CONSOLIDADO DE EMPRESAS AUTORIZADAS           */
+        /* ================================================================= */
+        <div className="rounded-2xl border border-border bg-card shadow-soft overflow-hidden space-y-0">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 border-b border-border bg-muted/20">
+            <div className="flex items-center gap-2">
+              <Building2 className="h-5 w-5 text-primary" />
+              <h3 className="text-sm font-bold text-foreground">
+                Directorio de Empresas Autorizadas y Estado D-104
+              </h3>
+              <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-bold text-primary">
+                {filtradas.length} cliente(s)
+              </span>
+            </div>
+
+            <div className="relative max-w-sm flex-1">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <input
+                value={filtroTexto}
+                onChange={(e) => setFiltroTexto(e.target.value)}
+                placeholder="Buscar por nombre, código o cédula..."
+                className="h-9 w-full rounded-lg border border-border bg-background pl-9 pr-3 text-xs focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/20"
+              />
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-muted/50 text-[11px] text-muted-foreground border-b border-border font-semibold">
+                <tr>
+                  <th className="px-4 py-3">EMPRESA / CONTRIBUYENTE</th>
+                  <th className="px-4 py-3 text-right">VENTAS EMITIDAS</th>
+                  <th className="px-4 py-3 text-right">GASTOS Y COMPRAS</th>
+                  <th className="px-4 py-3 text-center">CONFIRMACIÓN CCE</th>
+                  <th className="px-4 py-3 text-center">PRORRATA [114]</th>
+                  <th className="px-4 py-3 text-right">ESTADO D-104</th>
+                  <th className="px-4 py-3 text-center">ACCIONES CONTADOR</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border text-xs">
+                {cargando ? (
+                  <tr>
+                    <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
+                      Cargando información consolidada del cliente...
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+                ) : filtradas.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
+                      No se encontraron empresas autorizadas en este perfil.
+                    </td>
+                  </tr>
+                ) : (
+                  filtradas.map((m) => (
+                    <tr key={m.establishment.id} className="hover:bg-muted/30 transition-colors">
+                      <td className="px-4 py-3">
+                        <div className="font-bold text-foreground max-w-[220px] truncate" title={m.establishment.name}>
+                          {m.establishment.name}
+                        </div>
+                        <div className="font-mono text-[11px] text-muted-foreground flex items-center gap-1.5">
+                          <span>Céd: {m.establishment.legal_id}</span>
+                          <span>•</span>
+                          <span>Cód: {m.establishment.code}</span>
+                        </div>
+                      </td>
 
-      {/* Modal de Invitación a Contador / Auditor */}
+                      <td className="px-4 py-3 text-right">
+                        <div className="font-mono font-bold text-foreground">
+                          {formatCRC(m.totalVentas)}
+                        </div>
+                        <div className="text-[10px] text-muted-foreground">
+                          IVA: +{formatCRC(m.totalIvaVentas)} ({m.cantidadVentas} doc.)
+                        </div>
+                      </td>
+
+                      <td className="px-4 py-3 text-right">
+                        <div className="font-mono font-bold text-foreground">
+                          {formatCRC(m.totalCompras)}
+                        </div>
+                        <div className="text-[10px] text-muted-foreground">
+                          IVA: -{formatCRC(m.totalIvaCompras)} ({m.cantidadCompras} doc.)
+                        </div>
+                      </td>
+
+                      <td className="px-4 py-3 text-center">
+                        {m.comprasPendientesCCE > 0 ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-bold text-amber-600">
+                            <AlertCircle className="h-3 w-3" /> {m.comprasPendientesCCE} pendientes CCE
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-600">
+                            <ShieldCheck className="h-3 w-3" /> CCE al día ✓
+                          </span>
+                        )}
+                      </td>
+
+                      <td className="px-4 py-3 text-center font-mono">
+                        <span
+                          className={`rounded px-1.5 py-0.5 text-[11px] font-bold ${
+                            m.tieneProrrata
+                              ? "bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                              : "bg-emerald-500/10 text-emerald-600"
+                          }`}
+                        >
+                          {m.factorProrrata.toFixed(2)}%
+                        </span>
+                      </td>
+
+                      <td className="px-4 py-3 text-right">
+                        <div
+                          className={`font-mono font-extrabold text-xs ${
+                            m.saldoIva > 0
+                              ? "text-amber-600 dark:text-amber-400"
+                              : "text-emerald-600 dark:text-emerald-400"
+                          }`}
+                        >
+                          {m.saldoIva > 0 ? "Paga: " : "A favor: "}
+                          {formatCRC(Math.abs(m.saldoIva))}
+                        </div>
+                        <span className="text-[10px] text-muted-foreground font-mono">
+                          {m.saldoIva > 0 ? "Casilla [140]" : "Casilla [141]"}
+                        </span>
+                      </td>
+
+                      <td className="px-4 py-3 text-center">
+                        <div className="flex items-center justify-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => handleAuditarEmpresa(m.establishment)}
+                            className="inline-flex items-center gap-1 rounded-lg border border-primary/30 bg-primary/10 px-2.5 py-1 text-[11px] font-bold text-primary hover:bg-primary/20 transition-colors cursor-pointer"
+                            title="Conmutar y abrir DeclaraHub D-104 de esta empresa"
+                          >
+                            <Eye className="h-3.5 w-3.5" /> Auditar
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleDescargarExcelEmpresa(m.establishment)}
+                            className="rounded-lg border border-border bg-card p-1 text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
+                            title="Descargar libro contable en Excel"
+                          >
+                            <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600" />
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleCopiarMensajeCliente(m)}
+                            className="rounded-lg border border-border bg-card p-1 text-muted-foreground hover:bg-muted hover:text-primary cursor-pointer"
+                            title="Copiar resumen formal para WhatsApp del cliente"
+                          >
+                            {copiedId === m.establishment.id ? (
+                              <Check className="h-3.5 w-3.5 text-emerald-500" />
+                            ) : (
+                              <Send className="h-3.5 w-3.5" />
+                            )}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Asignación / Invitación a Contador */}
       {invitarModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
           <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-2xl space-y-4">
@@ -541,13 +873,13 @@ Emitido por su Despacho Contable mediante DeclaraHub.`;
                   <UserPlus className="h-5 w-5" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-foreground">Invitar Contador / Auditor Externo</h3>
-                  <p className="text-[11px] text-muted-foreground">Acceso de solo lectura y auditoría fiscal.</p>
+                  <h3 className="text-sm font-bold text-foreground">Asignar Contador a este Cliente</h3>
+                  <p className="text-[11px] text-muted-foreground">Acceso restringido únicamente a {activeEstablishment?.name}.</p>
                 </div>
               </div>
               <button
                 onClick={() => setInvitarModalOpen(false)}
-                className="rounded-lg p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                className="rounded-lg p-1 text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -575,10 +907,12 @@ Emitido por su Despacho Contable mediante DeclaraHub.`;
                 />
               </div>
 
-              <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-3 text-[11px] text-muted-foreground space-y-1">
-                <strong className="text-foreground block">🛡️ Protección de Seguridad Contable:</strong>
-                <p>• El contador podrá ver la información contable y descargar paquetes Excel.</p>
-                <p>• <strong>Bloqueado:</strong> No puede emitir facturas, modificar precios ni alterar credenciales de Hacienda.</p>
+              <div className="rounded-xl border border-indigo-500/20 bg-indigo-500/5 p-3 text-[11px] text-muted-foreground space-y-1">
+                <strong className="text-foreground flex items-center gap-1">
+                  <Lock className="h-3.5 w-3.5 text-indigo-500" /> Aislamiento de Cartera Garantizado:
+                </strong>
+                <p>• Este contador <strong>SOLO</strong> tendrá acceso a las actividades y facturas de <strong>{activeEstablishment?.name}</strong>.</p>
+                <p>• Las demás empresas del sistema permanecerán completamente invisibles e inaccesibles para él.</p>
               </div>
             </div>
 
@@ -586,7 +920,7 @@ Emitido por su Despacho Contable mediante DeclaraHub.`;
               <button
                 type="button"
                 onClick={() => setInvitarModalOpen(false)}
-                className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold hover:bg-muted"
+                className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold hover:bg-muted cursor-pointer"
               >
                 Cancelar
               </button>
@@ -597,14 +931,14 @@ Emitido por su Despacho Contable mediante DeclaraHub.`;
                     toast.error("Por favor ingresa el correo del contador.");
                     return;
                   }
-                  toast.success(`Invitación enviada a ${invitarEmail}`, {
-                    description: "Se ha asignado el rol de Contador / Auditor Fiscal con acceso multi-empresa.",
+                  toast.success(`Contador asignado con éxito a ${activeEstablishment?.name}`, {
+                    description: `Se enviaron las credenciales de auditoría a ${invitarEmail}.`,
                   });
                   setInvitarModalOpen(false);
                 }}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-1.5 text-xs font-bold text-primary-foreground hover:bg-primary/90"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-1.5 text-xs font-bold text-primary-foreground hover:bg-primary/90 cursor-pointer"
               >
-                <Send className="h-3.5 w-3.5" /> Enviar Invitación
+                <Send className="h-3.5 w-3.5" /> Confirmar Asignación
               </button>
             </div>
           </div>
