@@ -154,6 +154,7 @@ const REF_TYPES = [
   { code: "13", label: "13 - Anulación por error material (Afecta periodo original - Noviembre)" },
   { code: "14", label: "14 - Corrección de montos por error material (Afecta periodo original - Noviembre)" },
   { code: "15", label: "15 - Sustitución de comprobante por error material (Afecta periodo original - Noviembre)" },
+  { code: "12", label: "12 - Nota de crédito financiera por exoneración posterior a la facturación" },
   { code: "01", label: "01 - Anula documento de referencia (Devolución comercial ordinaria)" },
   { code: "02", label: "02 - Corrige texto del documento" },
   { code: "03", label: "03 - Corrige montos" },
@@ -162,6 +163,14 @@ const REF_TYPES = [
   { code: "16", label: "16 - Referencia a comprobante electrónico rechazado por Hacienda" },
   { code: "17", label: "17 - Aplicación de pago en Recibo Electrónico de Pago (REP)" },
   { code: "99", label: "99 - Otros" },
+];
+
+const REF_DOC_TYPES = [
+  { code: "01", label: "01 - Factura Electrónica (FE)" },
+  { code: "04", label: "04 - Tiquete Electrónico (TE)" },
+  { code: "19", label: "19 - Factura Electrónica de Exportación (FEE - Anexo 4.4 v2)" },
+  { code: "20", label: "20 - Recibo Electrónico de Pago (REP - Anexo 4.4 v2)" },
+  { code: "99", label: "99 - Otros comprobantes" },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -559,7 +568,7 @@ function NewInvoice() {
 
   // Referencia (NC/ND)
   const isReference = docType === "03" || docType === "02";
-  const [ref, setRef] = useState({ type: "01", docKey: "", reason: "" });
+  const [ref, setRef] = useState({ type: "13", docType: "01", docKey: "", reason: "" });
 
   // Cálculos
   const calc = useMemo(() => {
@@ -767,7 +776,7 @@ function NewInvoice() {
         isReference && ref.docKey.trim()
           ? [
               {
-                tipoDocumento: "01",
+                tipoDocumento: ref.docType || "01",
                 numeroDocumento: ref.docKey.trim(),
                 fechaEmision: new Date(),
                 codigo: ref.type,
@@ -822,6 +831,17 @@ function NewInvoice() {
             "Hacienda exige indicar la Clave numérica oficial de 50 dígitos del comprobante original referenciado.",
         });
         return;
+      }
+
+      // Normativa Hacienda 4.4 v2 (Cambio 4): Una Nota de Crédito no puede superar el monto de la factura referenciada
+      if (docType === "03") {
+        const originalInv = recentInvoices.find((i) => i.clave === ref.docKey.trim());
+        if (originalInv && total > Number(originalInv.total) + 0.01) {
+          toast.error("Validación de Hacienda (Normativa 4.4 v2)", {
+            description: `El monto de la Nota de Crédito (₡${total.toLocaleString("es-CR")}) no puede superar el total de la factura original referenciada (₡${Number(originalInv.total).toLocaleString("es-CR")}).`,
+          });
+          return;
+        }
       }
     }
 

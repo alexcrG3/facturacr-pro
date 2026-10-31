@@ -128,6 +128,7 @@ export type CodigoReferencia =
   | "03" // Corrige montos
   | "04" // Referencia a otro documento
   | "05" // Sustituye comprobante provisional por contingencia
+  | "12" // Nota de crédito financiera por exoneración posterior a la facturación
   | "13" // Anula comprobante por error material (afecta periodo original - Normativa 1 Noviembre)
   | "14" // Corrige montos por error material (afecta periodo original - Normativa 1 Noviembre)
   | "15" // Sustituye comprobante por error material (afecta periodo original - Normativa 1 Noviembre)

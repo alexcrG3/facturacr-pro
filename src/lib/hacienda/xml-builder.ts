@@ -71,7 +71,7 @@ export function construirXmlHacienda(data: FacturaHaciendaPayload): string {
   }
   xml += `    <Identificacion>\n`;
   xml += `      <Tipo>${data.emisor.tipoIdentificacion}</Tipo>\n`;
-  xml += `      <Numero>${data.emisor.numeroIdentificacion.replace(/\D/g, "")}</Numero>\n`;
+  xml += `      <Numero>${data.emisor.numeroIdentificacion.replace(/[^a-zA-Z0-9]/g, "")}</Numero>\n`;
   xml += `    </Identificacion>\n`;
   if (data.emisor.telefono) {
     xml += `    <Telefono>\n`;
