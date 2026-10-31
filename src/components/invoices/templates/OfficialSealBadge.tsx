@@ -3,7 +3,7 @@ import { ShieldCheck, Lock, CheckCircle2 } from "lucide-react";
 
 export function OfficialSealBadge({
   resolution = "DGT-R-033-2019 / MH-DGT-RES-0027-2024",
-  version = "4.3",
+  version = "4.4 (v2)",
   variant = "horizontal",
 }: {
   resolution?: string;

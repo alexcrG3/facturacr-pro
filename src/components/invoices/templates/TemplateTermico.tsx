@@ -163,7 +163,7 @@ export function TemplateTermico({
           {clave}
         </div>
         <div className="text-[8px] text-slate-700 leading-tight">
-          Autorizada mediante resoluciones DGT-R-033-2019 y MH-DGT-RES-0027-2024 de la Dirección General de Tributación.
+          Autorizada mediante resoluciones DGT-R-033-2019 y MH-DGT-RES-0027-2024 de la Dirección General de Tributación. Versión 4.4 (v2).
         </div>
         <div className="text-[9px] font-bold uppercase pt-1">
           ¡Gracias por su compra!

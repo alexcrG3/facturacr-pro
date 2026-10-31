@@ -173,7 +173,7 @@ export function TemplateClasica({
               El recibido conforme de este documento electrónico da por aceptado que se recibieron todas sus líneas y servicios a entera satisfacción.
             </p>
             <p className="font-bold text-slate-700">
-              Autorizada mediante Resolución DGT-R-033-2019 de la Dirección General de Tributación.
+              Autorizada mediante Resoluciones DGT-R-033-2019 y MH-DGT-RES-0027-2024 de la Dirección General de Tributación. Versión 4.4 (v2).
             </p>
             <div className="pt-1 font-bold uppercase text-[11px] text-slate-900 font-mono">
               TOTAL EN LETRAS: {montoEnLetras}

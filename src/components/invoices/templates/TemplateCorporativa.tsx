@@ -241,8 +241,8 @@ export function TemplateCorporativa({
               Comprobante Electrónico Autorizado
             </span>
             <p className="text-[10px] text-slate-500 leading-relaxed">
-              Autorizado mediante resolución <strong>N° DGT-R-033-2019</strong> de la Dirección General de Tributación.
-              Versión 4.3.
+              Autorizado mediante resolución <strong>N° DGT-R-033-2019</strong> y <strong>MH-DGT-RES-0027-2024</strong> de la Dirección General de Tributación.
+              Versión 4.4 (v2).
             </p>
             <span className="inline-flex items-center gap-1 text-[9px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200/60">
               <CheckCircle2 className="h-3 w-3" /> Verificación Criptográfica SHA-256

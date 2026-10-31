@@ -246,7 +246,7 @@ export function TemplateModerna({
           </div>
           <div className="space-y-1 max-w-sm">
             <p className="text-[10px] text-slate-500 leading-snug">
-              Autorizada mediante resolución de la DGT Nº <strong>DGT-R-033-2019</strong> y <strong>MH-DGT-RES-0027-2024</strong>. Versión 4.4.
+              Autorizada mediante resolución de la DGT Nº <strong>DGT-R-033-2019</strong> y <strong>MH-DGT-RES-0027-2024</strong>. Versión 4.4 (v2).
             </p>
             <p className="text-[9px] text-slate-400">
               Este comprobante electrónico goza de validez jurídica y tributaria plena en Costa Rica conforme al artículo 83 del Código de Normas y Procedimientos Tributarios.
