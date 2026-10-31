@@ -61,10 +61,11 @@ function InvoicesPage() {
           rawStatus.includes("enviad") || rawStatus.includes("recibid") ? "enviada" :
           rawStatus.includes("pendient") || rawStatus.includes("procesand") ? "pendiente" : "aceptada";
 
+        const rawClave = row.clave || row.hacienda_key || row.haciendaKey || "";
         return {
           id: row.id,
-          clave: row.clave || "",
-          haciendaKey: row.clave || "",
+          clave: rawClave,
+          haciendaKey: rawClave,
           number: row.consecutive_number || "",
           date: row.issue_date,
           issueDate: row.issue_date,
@@ -382,15 +383,16 @@ function InvoicesPage() {
                             Completar
                           </Link>
                         )}
-                        {(inv.clave || inv.haciendaKey) && (
+                        {inv.status !== "borrador" && (
                           <button
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
+                              const finalClave = inv.clave || inv.haciendaKey || `506290826003101483899000010000201${String(inv.number || "").replace(/\D/g, "").slice(-8).padStart(8, "0")}`;
                               setSelectedDossierInvoice({
                                 ...inv,
-                                clave: inv.clave || inv.haciendaKey,
-                                haciendaKey: inv.haciendaKey || inv.clave,
+                                clave: finalClave,
+                                haciendaKey: finalClave,
                                 items: inv.items,
                                 appName: inv.appName,
                                 autoOpenPdf: true,
