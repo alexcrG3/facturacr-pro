@@ -38,7 +38,7 @@ export const Route = createFileRoute("/admin")({
 });
 
 function CommandCenterStandalone() {
-  const { user, isSuperAdmin, isAuthenticated, isLoadingAuth, setActiveEstablishment, loadEstablishments, logout } = useApp();
+  const { user, isSuperAdmin, isAuthenticated, isLoadingAuth, setActiveEstablishment, loadEstablishments, logout, startSimulation } = useApp();
   const navigate = useNavigate();
 
   // Protección de ruta: solo Super Admin tiene acceso al Centro de Mando
@@ -114,6 +114,49 @@ function CommandCenterStandalone() {
   const [newClientEmail, setNewClientEmail] = useState("");
   const [newClientPassword, setNewClientPassword] = useState("");
   const [newClientRole, setNewClientRole] = useState<Role>("admin");
+
+  // Modal para Simulación de Usuario (Impersonation Multi-Tenant)
+  const [showSimulateModal, setShowSimulateModal] = useState(false);
+  const [simulateTargetEst, setSimulateTargetEst] = useState<any | null>(null);
+  const [simulateRole, setSimulateRole] = useState<Role>("admin");
+  const [simulateMode, setSimulateMode] = useState<"role" | "existing">("role");
+  const [simulateSelectedUserId, setSimulateSelectedUserId] = useState<string>("");
+
+  const handleOpenSimulateModal = (est: any) => {
+    setSimulateTargetEst(est);
+    setSimulateRole("admin");
+    setSimulateMode("role");
+    setSimulateSelectedUserId("");
+    setShowSimulateModal(true);
+  };
+
+  const handleStartSimulate = () => {
+    if (!simulateTargetEst) return;
+    let targetUser: any = {
+      role: simulateRole,
+      name: `Usuario ${simulateRole.toUpperCase()} (${simulateTargetEst.app_name || simulateTargetEst.name})`,
+      email: `${simulateRole}@${(simulateTargetEst.code || "empresa").toLowerCase()}.com`,
+    };
+
+    if (simulateMode === "existing" && simulateSelectedUserId) {
+      const foundUser = adminUsers.find((u) => u.id === simulateSelectedUserId);
+      if (foundUser) {
+        targetUser = {
+          id: foundUser.id,
+          role: foundUser.role || "admin",
+          name: foundUser.fullName || foundUser.email,
+          email: foundUser.email,
+        };
+      }
+    }
+
+    startSimulation(targetUser, simulateTargetEst);
+    toast.success(
+      `Iniciando simulación como ${targetUser.name} (${targetUser.role}) en ${simulateTargetEst.app_name || simulateTargetEst.name}`
+    );
+    setShowSimulateModal(false);
+    navigate({ to: "/app/dashboard" });
+  };
 
   const loadAdminUsers = async () => {
     setLoadingUsers(true);
@@ -738,6 +781,21 @@ function CommandCenterStandalone() {
             </button>
 
             <button
+              onClick={() => {
+                loadAdminUsers();
+                if (establishmentsList.length > 0) {
+                  handleOpenSimulateModal(establishmentsList[0]);
+                } else {
+                  toast.error("No hay empresas registradas para simular.");
+                }
+              }}
+              className="inline-flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-900 px-4 py-2.5 text-sm font-bold transition-all shadow-xs cursor-pointer hover:border-amber-400"
+              title="Simular la vista y permisos de un usuario en cualquier empresa"
+            >
+              <span>🎭 Simular Usuario</span>
+            </button>
+
+            <button
               onClick={() => setShowModal(true)}
               className="inline-flex items-center gap-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 text-sm font-semibold shadow-md shadow-blue-600/25 transition-all cursor-pointer"
             >
@@ -983,6 +1041,20 @@ function CommandCenterStandalone() {
                           <Lock className="h-3.5 w-3.5" />
                         </span>
                       )}
+
+                      {/* Botón Simular Vista de Usuario */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          loadAdminUsers();
+                          handleOpenSimulateModal(est);
+                        }}
+                        className="inline-flex items-center gap-1.5 rounded-xl border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-900 px-3 py-2 text-xs font-bold transition-all cursor-pointer shadow-xs hover:border-amber-400"
+                        title={`Simular lo que ve un usuario de ${est.app_name || est.name}`}
+                      >
+                        <span>🎭 Simular</span>
+                      </button>
 
                       {/* Botón Ingresar */}
                       <button
@@ -1831,6 +1903,198 @@ function CommandCenterStandalone() {
                     ? "Crear Cliente y Asignar Sociedades"
                     : "Guardar Permisos de Sociedades"}
                 </span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── MODAL SIMULADOR DE USUARIO (IMPERSONATION) ───────────────────────── */}
+      {showSimulateModal && simulateTargetEst && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs overflow-y-auto">
+          <div className="w-full max-w-xl rounded-3xl bg-white p-6 shadow-2xl space-y-5 my-8">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-2xl bg-amber-500/10 text-amber-600 flex items-center justify-center text-xl shrink-0 font-bold">
+                  🎭
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900">
+                    Simulador de Vista de Usuario
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Navega por FacturaOS exactamente como lo vería el usuario o rol de esta empresa.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowSimulateModal(false)}
+                className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Selector de Empresa */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-slate-700">Empresa Seleccionada:</label>
+              <select
+                value={simulateTargetEst.id}
+                onChange={(e) => {
+                  const found = establishmentsList.find((x) => x.id === e.target.value);
+                  if (found) setSimulateTargetEst(found);
+                }}
+                className="w-full h-11 rounded-xl border border-slate-200 bg-slate-50 px-3.5 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
+              >
+                {establishmentsList.map((est) => (
+                  <option key={est.id} value={est.id}>
+                    {est.app_name || est.name} (Cédula: {est.legal_id} • Cód: {est.code})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Pestañas: Por Rol vs Por Usuario Existente */}
+            <div className="flex items-center rounded-xl bg-slate-100 p-1 text-xs font-bold">
+              <button
+                type="button"
+                onClick={() => setSimulateMode("role")}
+                className={`flex-1 rounded-lg py-2 transition-all cursor-pointer ${
+                  simulateMode === "role"
+                    ? "bg-white text-slate-900 shadow-xs"
+                    : "text-slate-500 hover:text-slate-900"
+                }`}
+              >
+                1. Simular por Rol Operativo
+              </button>
+              <button
+                type="button"
+                onClick={() => setSimulateMode("existing")}
+                className={`flex-1 rounded-lg py-2 transition-all cursor-pointer ${
+                  simulateMode === "existing"
+                    ? "bg-white text-slate-900 shadow-xs"
+                    : "text-slate-500 hover:text-slate-900"
+                }`}
+              >
+                2. Simular Usuario Real Registrado ({adminUsers.length})
+              </button>
+            </div>
+
+            {simulateMode === "role" ? (
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-700">Selecciona el Rol a Simular:</label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  {[
+                    {
+                      role: "admin" as Role,
+                      name: "Dueño / Administrador",
+                      icon: "👑",
+                      desc: "Acceso total a la empresa: catálogo, CAByS, clientes, facturas, cajas y reportes.",
+                    },
+                    {
+                      role: "cajero" as Role,
+                      name: "Cajero",
+                      icon: "💵",
+                      desc: "Solo Punto de Venta, cobros, facturación rápida y apertura de caja.",
+                    },
+                    {
+                      role: "vendedor" as Role,
+                      name: "Vendedor",
+                      icon: "🏷️",
+                      desc: "Emisión de facturas y catálogo de clientes. Bloqueadas opciones avanzadas.",
+                    },
+                    {
+                      role: "contador" as Role,
+                      name: "Contador Externo",
+                      icon: "📊",
+                      desc: "DeclaraHub, asientos contables, borrador D-151 y auditoría fiscal.",
+                    },
+                  ].map((item) => (
+                    <div
+                      key={item.role}
+                      onClick={() => setSimulateRole(item.role)}
+                      className={`p-3 rounded-2xl border transition-all cursor-pointer text-xs ${
+                        simulateRole === item.role
+                          ? "border-amber-500 bg-amber-50/60 text-amber-950 shadow-xs font-medium"
+                          : "border-slate-200 bg-white hover:bg-slate-50 text-slate-700"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-lg">{item.icon}</span>
+                        <span className="font-bold text-slate-900">{item.name}</span>
+                        {simulateRole === item.role && (
+                          <span className="ml-auto text-amber-600 font-bold">✓</span>
+                        )}
+                      </div>
+                      <p className="mt-1 text-[11px] text-slate-500">{item.desc}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-700">Selecciona el Usuario Registrado:</label>
+                {adminUsers.length === 0 ? (
+                  <p className="text-xs text-slate-500 p-4 text-center border border-dashed rounded-xl">
+                    No hay usuarios registrados en la base de datos todavía.
+                  </p>
+                ) : (
+                  <div className="max-h-56 overflow-y-auto space-y-1.5 divide-y divide-slate-100 rounded-2xl border border-slate-200 p-2">
+                    {adminUsers.map((u) => {
+                      const isSelected = simulateSelectedUserId === u.id;
+                      return (
+                        <div
+                          key={u.id}
+                          onClick={() => {
+                            setSimulateSelectedUserId(u.id);
+                            if (u.role) setSimulateRole(u.role);
+                          }}
+                          className={`flex items-center justify-between p-2.5 rounded-xl transition-all cursor-pointer text-xs ${
+                            isSelected ? "bg-amber-50 text-amber-950 font-bold" : "hover:bg-slate-50"
+                          }`}
+                        >
+                          <div>
+                            <p className="font-bold text-slate-900">{u.fullName || u.email}</p>
+                            <p className="text-[11px] text-slate-500 font-mono">{u.email}</p>
+                          </div>
+                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase text-slate-600">
+                            {u.role || "admin"}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Resumen de Blindaje */}
+            <div className="rounded-2xl border border-amber-200/80 bg-amber-50/50 p-3.5 text-xs text-amber-950 space-y-1.5">
+              <p className="font-bold flex items-center gap-1.5 text-amber-900">
+                <ShieldCheck className="h-4 w-4 text-amber-600 shrink-0" /> Garantía de Aislamiento y Control:
+              </p>
+              <ul className="list-disc list-inside text-[11px] space-y-0.5 text-amber-900/85">
+                <li>Solo verás el catálogo de productos y códigos CAByS de <strong>{simulateTargetEst.app_name || simulateTargetEst.name}</strong>.</li>
+                <li>Solo verás las facturas, tiquetes y clientes propios de esta empresa.</li>
+                <li>Aparecerá una barra ámbar en la parte superior para volver al Centro de Mando en 1 clic.</li>
+              </ul>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setShowSimulateModal(false)}
+                className="rounded-xl border border-slate-200 px-4 py-2.5 font-semibold text-slate-600 hover:bg-slate-50 text-xs cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleStartSimulate}
+                className="inline-flex items-center gap-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-amber-950 px-5 py-2.5 text-xs font-bold shadow-md shadow-amber-500/20 transition-all cursor-pointer"
+              >
+                <span>Iniciar Simulación Ahora 🚀</span>
               </button>
             </div>
           </div>

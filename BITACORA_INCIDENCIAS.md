@@ -7,6 +7,35 @@
 
 ---
 
+### [2026-11-06 16:40] - Corrección Crítica: Aislamiento Total Multi-Tenant en Catálogo de Productos, Códigos CAByS y Emisión de Facturas
+* **Módulos Afectados:**
+  - `src/lib/company-catalog.ts` (Nuevo motor de catálogos y CAByS estrictamente aislados por establecimiento)
+  - `src/routes/app.products.tsx`
+  - `src/routes/app.cabys.tsx`
+  - `src/routes/app.invoices.new.tsx`
+  - `BITACORA_INCIDENCIAS.md`
+* **Incidencia Reportada:**
+  - Al ingresar a la empresa **SRL. 3102832920** (Cédula: 3102832920 / Luxx Car Wash & Mantenimiento Automotriz / Actividad 452001), la pantalla de *Productos y Servicios* y la de *Mis CAByS* mostraban los servicios de software y los códigos de desarrollo/TI de **Grupo G Tres** (Cédula: 3-101-483899 / Actividad 6209.0).
+  - Asimismo, al facturar en `app.invoices.new.tsx`, el selector de productos, CAByS, clientes y facturas recientes cargaba registros globales sin filtro de empresa.
+* **Causa Raíz:**
+  1. En `app.products.tsx` y `app.cabys.tsx`, el bloque de carga evaluaba `if (activeEstablishment.code === "nexus_clinic") ... else if (...)` y en el `else` final consultaba sin filtro `supabase.from("products").select("*")` y `supabase.from("company_cabys").select("*")`. Al ser SRL. 3102832920 una empresa con código `luxx_car_wash` (o cualquier otra empresa que no estuviera en esa lista fija), caía por defecto en el `else` y heredaba todos los productos y CAByS de software de Grupo G Tres.
+  2. En `app.cabys.tsx`, el banner superior y las filas tenían textos y códigos de actividad económica hardcodeados a `6209.0 — Otras actividades de la tecnología de información y servicio informáticos`.
+  3. En `app.invoices.new.tsx`, las consultas de `products`, `company_cabys`, `clients` y `recentInvoices` se ejecutaban con `useEffect(..., [])` sin parametrizar por `activeEstablishment.id`.
+* **Cómo se resolvió:**
+  1. **Motor Centralizado de Catálogos Aislados (`company-catalog.ts`):**
+     - Se crearon repositorios aislados por empresa con resolución reactiva:
+       - **SRL. 3102832920 / Luxx Car Wash & Automotriz:** Catálogo propio de lavado, detailing, tramado, cambio de aceite y escaneo, con sus códigos CAByS automotrices correspondientes (8714900000000, 8714100000000, 8714200000000, 4530010000000) bajo actividad `452001`.
+       - **Gas Express:** Catálogo exclusivo de cilindros de gas GLP y accesorios (3341000000000, 4341000000000) bajo actividad `466101`.
+       - **Grupo G Tres:** Servicios informáticos y de software propios (Actividad `620901`/`6209.0`).
+       - **Empresa 107680742 e Inquilinos Nuevos:** Catálogo limpio e independiente sin heredar jamás datos de Grupo G Tres.
+     - Persistencia y operaciones de crear, editar y eliminar productos y CAByS amarradas estrictamente a la clave única `activeEstablishment.id`.
+  2. **Actualización de `app.products.tsx` y `app.cabys.tsx`:**
+     - Eliminado el bloque `else` que cargaba Grupo G Tres a otras empresas.
+     - Banner de *Mis CAByS* muestra dinámicamente la actividad económica real de la empresa en sesión (ej. `452001 — Mantenimiento, diagnóstico y lavado de vehículos automotores`).
+  3. **Blindaje en Emisión de Facturas (`app.invoices.new.tsx`):**
+     - Los selectores de productos, CAByS, clientes y facturas recientes se sincronizan reactivamente al conmutar de empresa (`[activeEstablishment?.id]`).
+* **Prevención:** Ninguna pantalla ni selector cargará datos globales de Supabase con `else` por defecto; toda consulta debe estar aislada por `activeEstablishment.id` y su actividad económica real.
+
 ### [2026-10-29 10:35] - Implementación del Exportador de Asientos Contables (Debe y Haber para Softland, QuickBooks, Contalink y Excel)
 * **Módulos Afectados:**
   - `src/lib/hacienda/asientos-contables.ts` (Nuevo motor de pólizas contables, balance de partida doble y exportadores)

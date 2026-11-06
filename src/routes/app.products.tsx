@@ -8,6 +8,11 @@ import { CabysFinderModal } from "@/components/common/CabysFinderModal";
 import { type CabysItem } from "@/lib/cabys";
 import { supabase } from "@/lib/supabase";
 import { useApp } from "@/contexts/AppContext";
+import {
+  getCompanyProducts,
+  saveCompanyProduct,
+  deleteCompanyProduct,
+} from "@/lib/company-catalog";
 
 export const Route = createFileRoute("/app/products")({
   component: ProductsPage,
@@ -44,150 +49,10 @@ function ProductsPage() {
     }
     setIsLoading(true);
     try {
-      let baseCatalog: Product[] = [];
-
-      if (activeEstablishment.code === "nexus_clinic") {
-        baseCatalog = [
-          {
-            id: "med-1",
-            name: "Consulta Médica General",
-            sku: "MED-GEN",
-            cabys: "8512100000000",
-            category: "Consultas",
-            price: 30000,
-            cost: 0,
-            stock: 0,
-            minStock: 0,
-            tax: 4,
-          },
-          {
-            id: "med-2",
-            name: "Consulta Médica Especialista",
-            sku: "MED-ESP",
-            cabys: "8512200000000",
-            category: "Consultas",
-            price: 45000,
-            cost: 0,
-            stock: 0,
-            minStock: 0,
-            tax: 4,
-          },
-          {
-            id: "med-3",
-            name: "Certificado Médico Oficial",
-            sku: "MED-CERT",
-            cabys: "8519900000000",
-            category: "Procedimientos",
-            price: 15000,
-            cost: 0,
-            stock: 0,
-            minStock: 0,
-            tax: 4,
-          },
-        ];
-      } else if (activeEstablishment.code === "barber_app") {
-        baseCatalog = [
-          {
-            id: "bar-1",
-            name: "Corte de Cabello Clásico",
-            sku: "CORTE-01",
-            cabys: "9721000000000",
-            category: "Barbería",
-            price: 8000,
-            cost: 0,
-            stock: 0,
-            minStock: 0,
-            tax: 13,
-          },
-          {
-            id: "bar-2",
-            name: "Corte y Barba Completa",
-            sku: "COMBO-01",
-            cabys: "9721000000000",
-            category: "Barbería",
-            price: 14000,
-            cost: 0,
-            stock: 0,
-            minStock: 0,
-            tax: 13,
-          },
-        ];
-      } else if (activeEstablishment.code === "gas_express") {
-        baseCatalog = [
-          {
-            id: "gas-1",
-            name: "Cilindro Gas GLP 25 lbs",
-            sku: "GAS-25",
-            cabys: "3341000000000",
-            category: "Cilindros",
-            price: 10500,
-            cost: 0,
-            stock: 50,
-            minStock: 10,
-            tax: 13,
-          },
-        ];
-      } else if (activeEstablishment.code === "athletix_os") {
-        baseCatalog = [
-          {
-            id: "ath-1",
-            name: "Membresía Mensual Completa",
-            sku: "MEM-MES",
-            cabys: "9651000000000",
-            category: "Membresías",
-            price: 35000,
-            cost: 0,
-            stock: 0,
-            minStock: 0,
-            tax: 13,
-          },
-        ];
-      } else if (activeEstablishment.code === "avalcar_cr") {
-        baseCatalog = [
-          {
-            id: "av-1",
-            name: "Alineación y Tramado Completo",
-            sku: "ALIN-01",
-            cabys: "8714100000000",
-            category: "Taller",
-            price: 24000,
-            cost: 0,
-            stock: 0,
-            minStock: 0,
-            tax: 13,
-          },
-        ];
-      } else {
-        // Grupo G Tres (matriz de software y tecnología)
-        const { data, error } = await supabase
-          .from("products")
-          .select("*")
-          .order("created_at", { ascending: false });
-        if (error) throw error;
-        baseCatalog = (data || []).map((row: any) => ({
-          id: row.id,
-          name: row.name,
-          sku: row.code || "",
-          cabys: row.cabys_code || "",
-          category: row.category || "Servicios",
-          price: Number(row.price) || 0,
-          cost: 0,
-          stock: 0,
-          minStock: 5,
-          tax: Number(row.tax_rate) || 13,
-        }));
-      }
-
-      // Añadir productos locales personalizados guardados exclusivamente para este establecimiento
-      let localCustom: Product[] = [];
-      try {
-        const stored = localStorage.getItem(`facturaos_custom_products_${activeEstablishment.id}`);
-        if (stored) localCustom = JSON.parse(stored);
-      } catch {}
-
-      setProductList([...baseCatalog, ...localCustom]);
+      const prods = await getCompanyProducts(activeEstablishment);
+      setProductList(prods);
     } catch (err) {
-      console.error("Error cargando productos de Supabase:", err);
+      console.error("Error cargando productos:", err);
       setProductList([]);
     } finally {
       setIsLoading(false);
@@ -234,14 +99,15 @@ function ProductsPage() {
   };
 
   const handleDeleteProduct = async (id: string, prodName: string) => {
-    if (confirm(`¿Estás seguro de que deseas eliminar "${prodName}" del catálogo?`)) {
-      const { error } = await supabase.from("products").delete().eq("id", id);
-      if (error) {
+    if (!activeEstablishment) return;
+    if (confirm(`¿Estás seguro de que deseas eliminar "${prodName}" del catálogo de esta empresa?`)) {
+      try {
+        await deleteCompanyProduct(activeEstablishment, id);
+        setProductList((prev) => prev.filter((p) => p.id !== id));
+        toast.success(`Producto "${prodName}" eliminado correctamente`);
+      } catch (err) {
         toast.error("Error al eliminar producto");
-        return;
       }
-      setProductList((prev) => prev.filter((p) => p.id !== id));
-      toast.success(`Producto "${prodName}" eliminado correctamente`);
     }
   };
 
@@ -272,6 +138,10 @@ function ProductsPage() {
 
   const handleSaveProduct = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!activeEstablishment) {
+      toast.error("No hay empresa activa seleccionada");
+      return;
+    }
     if (!name.trim()) {
       toast.error("El nombre del producto o servicio es obligatorio");
       return;
@@ -283,63 +153,34 @@ function ProductsPage() {
 
     const cabysClean = cabys.trim().replace(/\D/g, "");
 
-    if (editingProductId) {
-      // Editar en Supabase
-      const { error } = await supabase
-        .from("products")
-        .update({
+    try {
+      const saved = await saveCompanyProduct(
+        activeEstablishment,
+        {
           name: name.trim(),
-          code: sku.trim() || "",
-          cabys_code: cabysClean,
+          sku: sku.trim(),
+          cabys: cabysClean,
           category,
           price: Number(price) || 0,
-          tax_rate: Number(tax) || 13,
-        })
-        .eq("id", editingProductId);
+          tax: Number(tax) || 13,
+          stock: Number(stock) || 0,
+          minStock: Number(minStock) || 5,
+        },
+        editingProductId
+      );
 
-      if (error) {
-        toast.error("Error al actualizar producto");
-        return;
+      if (editingProductId) {
+        toast.success(`Producto "${name.trim()}" actualizado con éxito`);
+      } else {
+        toast.success(`Producto "${name.trim()}" registrado en el catálogo de la empresa`);
       }
-      toast.success(`Producto "${name.trim()}" actualizado con éxito`);
-    } else {
-      // Crear nuevo en Supabase
-      const { data, error } = await supabase
-        .from("products")
-        .insert({
-          name: name.trim(),
-          code: sku.trim() || `PROD-${Math.floor(Math.random() * 900) + 100}`,
-          cabys_code: cabysClean,
-          category,
-          price: Number(price) || 0,
-          tax_rate: Number(tax) || 13,
-          unit: "Sp",
-        })
-        .select()
-        .single();
 
-      if (error) {
-        toast.error("Error al registrar producto");
-        return;
-      }
-      const newProduct: Product = {
-        id: data.id,
-        name: data.name,
-        sku: data.code || "",
-        cabys: data.cabys_code || "",
-        category: data.category || "Servicios",
-        price: Number(data.price) || 0,
-        cost: 0,
-        stock: 0,
-        minStock: 5,
-        tax: Number(data.tax_rate) || 13,
-      };
-      setProductList((prev) => [newProduct, ...prev]);
-      toast.success("Producto registrado exitosamente con su código CABYS");
+      await loadProducts();
+      setIsModalOpen(false);
+    } catch (err: any) {
+      console.error("Error guardando producto:", err);
+      toast.error(err.message || "Error al registrar el producto");
     }
-
-    await loadProducts();
-    setIsModalOpen(false);
   };
 
   const filtered = productList.filter((p) => {

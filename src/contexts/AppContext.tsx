@@ -34,6 +34,12 @@ export type User = {
   establishment_id?: string | null;
 };
 
+export interface SimulatedSession {
+  originalUser: User;
+  simulatedUser: User;
+  simulatedEstablishment: EstablishmentRecord;
+}
+
 type AppState = {
   user: User;
   authUser: SupabaseAuthUser | null;
@@ -50,6 +56,9 @@ type AppState = {
   toggleTheme: () => void;
   logout: () => Promise<void>;
   refreshProfile: () => Promise<void>;
+  simulatedSession: SimulatedSession | null;
+  startSimulation: (targetUser: Partial<User>, establishment: EstablishmentRecord) => void;
+  stopSimulation: () => void;
 };
 
 const defaultUser: User = {
@@ -80,8 +89,54 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [establishments, setEstablishments] = useState<EstablishmentRecord[]>([]);
   const [activeEstablishment, setActiveEstablishmentState] = useState<EstablishmentRecord | null>(null);
 
-  const isSuperAdmin =
-    user.role === "super_admin" || (user.email?.toLowerCase().trim() === "alex@mail.com" && user.role !== "vendedor" && user.role !== "cajero");
+  const [simulatedSession, setSimulatedSession] = useState<SimulatedSession | null>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const raw = localStorage.getItem("facturaos_simulation_session");
+        if (raw) return JSON.parse(raw);
+      } catch {}
+    }
+    return null;
+  });
+
+  const isSuperAdmin = simulatedSession
+    ? simulatedSession.simulatedUser.role === "super_admin"
+    : user.role === "super_admin" ||
+      (user.email?.toLowerCase().trim() === "alex@mail.com" &&
+        user.role !== "vendedor" &&
+        user.role !== "cajero");
+
+  const startSimulation = (targetUser: Partial<User>, establishment: EstablishmentRecord) => {
+    const simUser: User = {
+      id: targetUser.id || `sim-${targetUser.role || "admin"}-${establishment.id}`,
+      name: targetUser.name || `Usuario (${(targetUser.role || "admin").toUpperCase()})`,
+      email: targetUser.email || `${targetUser.role || "admin"}@${establishment.code || "empresa"}.com`,
+      role: targetUser.role || "admin",
+      initials: getInitials(targetUser.name || targetUser.email || "US"),
+      establishment_id: establishment.id,
+    };
+    const session: SimulatedSession = {
+      originalUser: user,
+      simulatedUser: simUser,
+      simulatedEstablishment: establishment,
+    };
+    setSimulatedSession(session);
+    setActiveEstablishmentState(establishment);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("facturaos_simulation_session", JSON.stringify(session));
+      localStorage.setItem("facturaos_active_est_id", establishment.id);
+    }
+  };
+
+  const stopSimulation = () => {
+    setSimulatedSession(null);
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("facturaos_simulation_session");
+    }
+    if (authUser) {
+      loadUserProfile(authUser);
+    }
+  };
 
   const resolveActiveEstablishment = (
     estData: EstablishmentRecord[],
@@ -91,6 +146,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     overrideAllowedIds?: string[]
   ): EstablishmentRecord | null => {
     if (!estData || estData.length === 0) return null;
+
+    if (simulatedSession) {
+      const matchSim = estData.find((e) => e.id === simulatedSession.simulatedEstablishment.id);
+      if (matchSim) return matchSim;
+      return simulatedSession.simulatedEstablishment;
+    }
 
     const email = (currentUserEmail || user.email || "").toLowerCase().trim();
     const role = currentUserRole || user.role;
@@ -400,9 +461,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     await supabase.auth.signOut();
     setAuthUser(null);
     setUser(defaultUser);
+    setSimulatedSession(null);
     setActiveEstablishmentState(null);
     if (typeof window !== "undefined") {
       localStorage.removeItem("facturaos_active_est_id");
+      localStorage.removeItem("facturaos_simulation_session");
       window.location.href = "/login";
     }
   };
@@ -410,7 +473,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   return (
     <Ctx.Provider
       value={{
-        user,
+        user: simulatedSession ? simulatedSession.simulatedUser : user,
         authUser,
         isAuthenticated: !!authUser,
         isLoadingAuth,
@@ -425,6 +488,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         toggleTheme,
         logout,
         refreshProfile,
+        simulatedSession,
+        startSimulation,
+        stopSimulation,
       }}
     >
       {children}

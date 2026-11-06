@@ -19,6 +19,13 @@ import { PageHeader } from "@/components/common/PageHeader";
 import { CabysFinderModal } from "@/components/common/CabysFinderModal";
 import { type CabysItem } from "@/lib/cabys";
 import { supabase } from "@/lib/supabase";
+import {
+  getCompanyCabys,
+  addCompanyCabys,
+  deleteCompanyCabys,
+  getActivityDescription,
+  type CompanyCabysRow,
+} from "@/lib/company-catalog";
 
 export const Route = createFileRoute("/app/cabys")({
   component: MisCabysPage,
@@ -26,15 +33,7 @@ export const Route = createFileRoute("/app/cabys")({
 
 import { useApp } from "@/contexts/AppContext";
 
-export interface CompanyCabysRow {
-  id: string;
-  cabys_code: string;
-  description: string;
-  economic_activity: string;
-  economic_activity_desc: string;
-  tax_rate: number;
-  created_at?: string;
-}
+export type { CompanyCabysRow };
 
 function MisCabysPage() {
   const { activeEstablishment } = useApp();
@@ -44,107 +43,19 @@ function MisCabysPage() {
   const [isFinderOpen, setIsFinderOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
-  const emisorActivity = activeEstablishment?.economic_activity_code || "6209.0";
+  const emisorActivity = activeEstablishment?.economic_activity_code || "620901";
 
   const loadCabys = async () => {
-    if (!activeEstablishment) return;
+    if (!activeEstablishment?.id) {
+      setCabysList([]);
+      return;
+    }
     setIsLoading(true);
     try {
-      if (activeEstablishment.code === "nexus_clinic") {
-        setCabysList([
-          {
-            id: "cab-med-1",
-            cabys_code: "8512100000000",
-            description: "Servicios de médicos generales en consulta externa",
-            economic_activity: "862001",
-            economic_activity_desc: "Actividades de médicos y odontólogos",
-            tax_rate: 4,
-          },
-          {
-            id: "cab-med-2",
-            cabys_code: "8512200000000",
-            description: "Servicios de médicos especialistas en clínica privada",
-            economic_activity: "862001",
-            economic_activity_desc: "Actividades de médicos y odontólogos",
-            tax_rate: 4,
-          },
-          {
-            id: "cab-med-3",
-            cabys_code: "8519900000000",
-            description: "Otros servicios de atención de la salud humana y enfermería",
-            economic_activity: "862001",
-            economic_activity_desc: "Actividades de médicos y odontólogos",
-            tax_rate: 4,
-          },
-        ]);
-        return;
-      }
-
-      if (activeEstablishment.code === "barber_app") {
-        setCabysList([
-          {
-            id: "cab-bar-1",
-            cabys_code: "9721000000000",
-            description: "Servicios de peluquería, corte de cabello y estética masculina",
-            economic_activity: "960201",
-            economic_activity_desc: "Peluquería y otros tratamientos de belleza",
-            tax_rate: 13,
-          },
-        ]);
-        return;
-      }
-
-      if (activeEstablishment.code === "gas_express") {
-        setCabysList([
-          {
-            id: "cab-gas-1",
-            cabys_code: "3341000000000",
-            description: "Gas Licuado de Petróleo (GLP) en cilindros para uso doméstico",
-            economic_activity: "466101",
-            economic_activity_desc: "Venta al por mayor de combustibles sólidos, líquidos y gaseosos",
-            tax_rate: 13,
-          },
-        ]);
-        return;
-      }
-
-      if (activeEstablishment.code === "athletix_os") {
-        setCabysList([
-          {
-            id: "cab-ath-1",
-            cabys_code: "9651000000000",
-            description: "Servicios de gimnasios, fitness y acondicionamiento físico",
-            economic_activity: "831401",
-            economic_activity_desc: "Actividades de clubes deportivos y gimnasios",
-            tax_rate: 13,
-          },
-        ]);
-        return;
-      }
-
-      if (activeEstablishment.code === "avalcar_cr") {
-        setCabysList([
-          {
-            id: "cab-av-1",
-            cabys_code: "8714100000000",
-            description: "Mantenimiento y reparación mecánica y eléctrica de vehículos de motor",
-            economic_activity: "452001",
-            economic_activity_desc: "Mantenimiento y reparación de vehículos automotores",
-            tax_rate: 13,
-          },
-        ]);
-        return;
-      }
-
-      // Grupo G Tres (matriz de software y tecnología)
-      const { data, error } = await supabase
-        .from("company_cabys")
-        .select("*")
-        .order("created_at", { ascending: false });
-      if (error) throw error;
-      setCabysList(data || []);
+      const list = await getCompanyCabys(activeEstablishment);
+      setCabysList(list);
     } catch (err) {
-      console.error("Error cargando Mis CABYS de Supabase:", err);
+      console.error("Error cargando Mis CABYS:", err);
       toast.error("Error cargando el catálogo de CABYS de la empresa");
     } finally {
       setIsLoading(false);
@@ -163,31 +74,17 @@ function MisCabysPage() {
   };
 
   const handleAddCabysFromCatalog = async (item: CabysItem) => {
+    if (!activeEstablishment) return;
     try {
       const exists = cabysList.some((c) => c.cabys_code === item.codigo);
       if (exists) {
-        toast.info("El código CABYS " + item.codigo + " ya está registrado en Mis CAByS");
+        toast.info("El código CABYS " + item.codigo + " ya está registrado en Mis CAByS de esta empresa");
         setIsFinderOpen(false);
         return;
       }
 
-      const newRow = {
-        cabys_code: item.codigo,
-        description: item.descripcion,
-        economic_activity: emisorActivity,
-        economic_activity_desc: "6209.0 - Otras actividades de la tecnología de información y servicio informáticos",
-        tax_rate: item.impuesto,
-      };
-
-      const { data, error } = await supabase
-        .from("company_cabys")
-        .insert(newRow)
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      setCabysList((prev) => [data, ...prev]);
+      const newRow = await addCompanyCabys(activeEstablishment, item);
+      setCabysList((prev) => [newRow, ...prev]);
       setIsFinderOpen(false);
       toast.success("CAByS " + item.codigo + " añadido a la empresa", {
         description: item.descripcion,
@@ -199,11 +96,11 @@ function MisCabysPage() {
   };
 
   const handleDeleteCabys = async (id: string, code: string, desc: string) => {
+    if (!activeEstablishment) return;
     if (confirm("¿Deseas quitar el código CABYS " + code + " de Mis CAByS?\n\n" + desc)) {
       try {
-        const { error } = await supabase.from("company_cabys").delete().eq("id", id);
-        if (error) throw error;
-        setCabysList((prev) => prev.filter((c) => c.id !== id));
+        await deleteCompanyCabys(activeEstablishment, id, code);
+        setCabysList((prev) => prev.filter((c) => c.id !== id && c.cabys_code !== code));
         toast.success("Código CABYS " + code + " removido de la empresa");
       } catch {
         toast.error("Error al quitar el código CABYS");
@@ -245,7 +142,7 @@ function MisCabysPage() {
           </div>
           <div>
             <p className="font-semibold text-foreground">
-              Actividad Económica Emisor: <span className="font-mono text-primary font-bold">6209.0</span> — Otras actividades de la tecnología de información y servicio informáticos
+              Actividad Económica Emisor: <span className="font-mono text-primary font-bold">{emisorActivity}</span> — {getActivityDescription(emisorActivity)}
             </p>
             <p className="text-muted-foreground mt-0.5">Todos los comprobantes electrónicos asociarán estos códigos CABYS a tu giro comercial autorizado ante Hacienda.</p>
           </div>
@@ -315,11 +212,13 @@ function MisCabysPage() {
 
                       <td className="px-5 py-3.5 text-muted-foreground max-w-sm text-xs">
                         <span className="font-mono font-medium text-foreground">
-                          {item.economic_activity === "620901" ? "6209.0" : (item.economic_activity || "6209.0")}
+                          {item.economic_activity || emisorActivity}
                         </span>
                         {" - "}
                         <span>
-                          {item.economic_activity_desc || "Otras actividades de la tecnología de información y servicio informáticos"}
+                          {item.economic_activity_desc?.includes(" - ")
+                            ? item.economic_activity_desc.split(" - ").slice(1).join(" - ")
+                            : item.economic_activity_desc || getActivityDescription(item.economic_activity || emisorActivity)}
                         </span>
                       </td>
 

@@ -38,6 +38,7 @@ import { CabysFinderModal } from "@/components/common/CabysFinderModal";
 import { type CabysItem, buscarCabys } from "@/lib/cabys";
 import { consultarContribuyenteHacienda, TaxpayerInfo } from "@/lib/taxpayer";
 import { supabase } from "@/lib/supabase";
+import { getCompanyProducts, getCompanyCabys } from "@/lib/company-catalog";
 import { useApp } from "@/contexts/AppContext";
 
 export const Route = createFileRoute("/app/invoices/new")({
@@ -227,78 +228,93 @@ function NewInvoice() {
   const [recentInvoices, setRecentInvoices] = useState<any[]>([]);
 
   useEffect(() => {
+    if (!activeEstablishment?.id) {
+      setRecentInvoices([]);
+      return;
+    }
     supabase
       .from("invoices")
       .select("*")
+      .eq("establishment_id", activeEstablishment.id)
       .order("issue_date", { ascending: false })
       .limit(30)
       .then(({ data }) => {
         if (data) setRecentInvoices(data);
       });
-  }, []);
+  }, [activeEstablishment?.id]);
 
   useEffect(() => {
-    supabase
-      .from("products")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .then(({ data }) => {
-        if (data && data.length > 0) {
-          setAllProducts(
-            data.map((row: any) => ({
-              id: row.id,
-              name: row.name,
-              sku: row.code || "",
-              cabys: row.cabys_code || "",
-              price: Number(row.price) || 0,
-              tax_rate: Number(row.tax_rate) || 13,
-              unit: row.unit || "Unid",
-              description: row.description || "",
-            }))
-          );
-        }
-      });
-  }, []);
+    if (!activeEstablishment) return;
+    getCompanyProducts(activeEstablishment).then((prods) => {
+      setAllProducts(
+        prods.map((p) => ({
+          id: p.id,
+          name: p.name,
+          sku: p.sku || "",
+          cabys: p.cabys || "",
+          price: Number(p.price) || 0,
+          tax_rate: Number(p.tax) || 13,
+          unit: p.unit || "Sp",
+          description: p.description || "",
+        }))
+      );
+    });
+  }, [activeEstablishment?.id]);
 
   useEffect(() => {
-    supabase
-      .from("company_cabys")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .then(({ data }) => {
-        if (data && data.length > 0) setCompanyCabys(data);
-      });
-  }, []);
+    if (!activeEstablishment) return;
+    getCompanyCabys(activeEstablishment).then((cabys) => {
+      setCompanyCabys(cabys);
+    });
+  }, [activeEstablishment?.id]);
 
   useEffect(() => {
+    if (!activeEstablishment?.id) {
+      setAllClients([]);
+      return;
+    }
+    // Cargar clientes aislados exclusivamente para este establecimiento
     supabase
-      .from("clients")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .then(({ data }) => {
-        if (data && data.length > 0) {
-          setAllClients(
-            data.map((row: any) => ({
-              id: row.id,
-              name: row.name,
-              type: row.legal_id_type === "02" || row.legal_id_type === "juridica" ? "juridica" : "fisica",
-              legalId: row.legal_id,
-              legalIdType: row.legal_id_type || (row.legal_id?.length === 10 ? "02" : "01"),
-              email: row.email || "",
-              phone: row.phone || "",
-              province: row.province || "San José",
-              canton: row.canton || "",
-              district: row.district || "",
-              address: row.address || "",
-              city: row.province || row.canton || "San José",
-              economicActivity: row.economic_activity || "",
-              totalSpent: 0,
-              invoices: 0,
-            }))
-          );
-        }
+      .from("invoices")
+      .select("client_name, client_legal_id, client_id")
+      .eq("establishment_id", activeEstablishment.id)
+      .then(async ({ data: invData }) => {
+        const estLegalIds = new Set(
+          (invData || []).map((i: any) => i.client_legal_id).filter(Boolean)
+        );
+
+        const { data: dbClients } = await supabase
+          .from("clients")
+          .select("*")
+          .order("created_at", { ascending: false });
+
+        const filtered = (dbClients || []).filter(
+          (c: any) =>
+            (c.establishment_id && c.establishment_id === activeEstablishment.id) ||
+            estLegalIds.has(c.legal_id)
+        );
+
+        setAllClients(
+          filtered.map((row: any) => ({
+            id: row.id,
+            name: row.name,
+            type: row.legal_id_type === "02" || row.legal_id_type === "juridica" ? "juridica" : "fisica",
+            legalId: row.legal_id,
+            legalIdType: row.legal_id_type || (row.legal_id?.length === 10 ? "02" : "01"),
+            email: row.email || "",
+            phone: row.phone || "",
+            province: row.province || "San José",
+            canton: row.canton || "",
+            district: row.district || "",
+            address: row.address || "",
+            city: row.province || row.canton || "San José",
+            economicActivity: row.economic_activity || "",
+            totalSpent: 0,
+            invoices: 0,
+          }))
+        );
       });
-  }, []);
+  }, [activeEstablishment?.id]);
 
   // Configuración de Hacienda y Ambiente (Staging vs Producción)
   const [ambiente, setAmbiente] = useState<"staging" | "produccion">(() => {
