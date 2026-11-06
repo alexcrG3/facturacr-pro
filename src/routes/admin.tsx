@@ -131,28 +131,46 @@ function CommandCenterStandalone() {
   };
 
   const handleStartSimulate = () => {
-    if (!simulateTargetEst) return;
+    let finalEst = simulateTargetEst;
     let targetUser: any = {
       role: simulateRole,
-      name: `Usuario ${simulateRole.toUpperCase()} (${simulateTargetEst.app_name || simulateTargetEst.name})`,
-      email: `${simulateRole}@${(simulateTargetEst.code || "empresa").toLowerCase()}.com`,
+      name: `Usuario ${simulateRole.toUpperCase()} (${simulateTargetEst?.app_name || simulateTargetEst?.name || "Empresa"})`,
+      email: `${simulateRole}@${(simulateTargetEst?.code || "empresa").toLowerCase()}.com`,
     };
 
     if (simulateMode === "existing" && simulateSelectedUserId) {
       const foundUser = adminUsers.find((u) => u.id === simulateSelectedUserId);
       if (foundUser) {
+        // Enlazar estrictamente a la empresa a la que pertenece este usuario
+        const assignedEst = establishmentsList.find(
+          (e) =>
+            e.id === foundUser.establishmentId ||
+            (Array.isArray(foundUser.allowedEstablishmentIds) && foundUser.allowedEstablishmentIds.includes(e.id)) ||
+            (e.email && foundUser.email && e.email.toLowerCase().trim() === foundUser.email.toLowerCase().trim())
+        );
+
+        if (assignedEst) {
+          finalEst = assignedEst;
+        }
+
         targetUser = {
           id: foundUser.id,
           role: foundUser.role || "admin",
           name: foundUser.fullName || foundUser.email,
           email: foundUser.email,
+          establishment_id: finalEst?.id || null,
         };
       }
     }
 
-    startSimulation(targetUser, simulateTargetEst);
+    if (!finalEst) {
+      toast.error("Por favor selecciona una empresa para simular.");
+      return;
+    }
+
+    startSimulation(targetUser, finalEst);
     toast.success(
-      `Iniciando simulación como ${targetUser.name} (${targetUser.role}) en ${simulateTargetEst.app_name || simulateTargetEst.name}`
+      `Iniciando simulación como ${targetUser.name} (${targetUser.role}) en ${finalEst.app_name || finalEst.name}`
     );
     setShowSimulateModal(false);
     navigate({ to: "/app/dashboard" });
@@ -2034,33 +2052,74 @@ function CommandCenterStandalone() {
               </div>
             ) : (
               <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-700">Selecciona el Usuario Registrado:</label>
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-slate-700">Selecciona el Usuario Registrado:</label>
+                  <span className="text-[11px] text-slate-400">
+                    Al hacer clic, el sistema se enlaza a su empresa asignada
+                  </span>
+                </div>
                 {adminUsers.length === 0 ? (
                   <p className="text-xs text-slate-500 p-4 text-center border border-dashed rounded-xl">
                     No hay usuarios registrados en la base de datos todavía.
                   </p>
                 ) : (
-                  <div className="max-h-56 overflow-y-auto space-y-1.5 divide-y divide-slate-100 rounded-2xl border border-slate-200 p-2">
+                  <div className="max-h-64 overflow-y-auto space-y-2 rounded-2xl border border-slate-200 p-2.5 bg-slate-50/50">
                     {adminUsers.map((u) => {
                       const isSelected = simulateSelectedUserId === u.id;
+                      const userEst = establishmentsList.find(
+                        (e) =>
+                          e.id === u.establishmentId ||
+                          (Array.isArray(u.allowedEstablishmentIds) && u.allowedEstablishmentIds.includes(e.id)) ||
+                          (e.email && u.email && e.email.toLowerCase().trim() === u.email.toLowerCase().trim())
+                      );
+
                       return (
                         <div
                           key={u.id}
                           onClick={() => {
                             setSimulateSelectedUserId(u.id);
                             if (u.role) setSimulateRole(u.role);
+                            if (userEst) {
+                              setSimulateTargetEst(userEst);
+                              toast.info(`Empresa conmutada a: ${userEst.app_name || userEst.name}`);
+                            }
                           }}
-                          className={`flex items-center justify-between p-2.5 rounded-xl transition-all cursor-pointer text-xs ${
-                            isSelected ? "bg-amber-50 text-amber-950 font-bold" : "hover:bg-slate-50"
+                          className={`flex items-center justify-between p-3 rounded-2xl transition-all cursor-pointer text-xs border ${
+                            isSelected
+                              ? "bg-amber-100/80 border-amber-500 text-amber-950 font-bold shadow-xs ring-2 ring-amber-400/20"
+                              : "bg-white border-slate-200/80 hover:bg-slate-50 hover:border-slate-300"
                           }`}
                         >
-                          <div>
-                            <p className="font-bold text-slate-900">{u.fullName || u.email}</p>
-                            <p className="text-[11px] text-slate-500 font-mono">{u.email}</p>
+                          <div className="min-w-0 pr-2">
+                            <div className="flex items-center gap-1.5">
+                              <p className="font-bold text-slate-900 truncate">{u.fullName || u.email}</p>
+                              {isSelected && (
+                                <span className="rounded-full bg-amber-500 text-amber-950 px-1.5 py-0.2 text-[9px] font-black uppercase">
+                                  Activo
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[11px] text-slate-500 font-mono truncate">{u.email}</p>
+                            {userEst ? (
+                              <p className="text-[11px] font-bold text-indigo-700 mt-1 flex items-center gap-1">
+                                🏢 Empresa: <strong>{userEst.app_name || userEst.name}</strong>
+                              </p>
+                            ) : (
+                              <p className="text-[10px] text-slate-400 mt-1">
+                                Sin empresa específica asignada (hereda la principal)
+                              </p>
+                            )}
                           </div>
-                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase text-slate-600">
-                            {u.role || "admin"}
-                          </span>
+                          <div className="flex flex-col items-end gap-1.5 shrink-0">
+                            <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-[10px] font-bold uppercase text-slate-700 border border-slate-200">
+                              {u.role || "admin"}
+                            </span>
+                            {isSelected && (
+                              <span className="text-amber-600 font-bold text-xs">
+                                ✓ Listo
+                              </span>
+                            )}
+                          </div>
                         </div>
                       );
                     })}
@@ -2070,14 +2129,32 @@ function CommandCenterStandalone() {
             )}
 
             {/* Resumen de Blindaje */}
-            <div className="rounded-2xl border border-amber-200/80 bg-amber-50/50 p-3.5 text-xs text-amber-950 space-y-1.5">
-              <p className="font-bold flex items-center gap-1.5 text-amber-900">
-                <ShieldCheck className="h-4 w-4 text-amber-600 shrink-0" /> Garantía de Aislamiento y Control:
+            <div className="rounded-2xl border border-amber-300/80 bg-amber-50/80 p-4 text-xs text-amber-950 space-y-2">
+              <p className="font-bold flex items-center gap-1.5 text-amber-900 text-sm">
+                <ShieldCheck className="h-4 w-4 text-amber-600 shrink-0" />
+                Destino de la Simulación:
               </p>
-              <ul className="list-disc list-inside text-[11px] space-y-0.5 text-amber-900/85">
-                <li>Solo verás el catálogo de productos y códigos CAByS de <strong>{simulateTargetEst.app_name || simulateTargetEst.name}</strong>.</li>
-                <li>Solo verás las facturas, tiquetes y clientes propios de esta empresa.</li>
-                <li>Aparecerá una barra ámbar en la parte superior para volver al Centro de Mando en 1 clic.</li>
+              <div className="bg-white/80 rounded-xl p-2.5 border border-amber-200 text-xs space-y-1">
+                <p>
+                  <strong>🏢 Empresa a ingresar:</strong>{" "}
+                  <span className="font-bold text-indigo-700">
+                    {simulateTargetEst.app_name || simulateTargetEst.name}
+                  </span>{" "}
+                  (Cédula: {simulateTargetEst.legal_id} • Cód: {simulateTargetEst.code})
+                </p>
+                <p>
+                  <strong>👤 Rol / Usuario:</strong>{" "}
+                  <span className="font-mono font-bold uppercase bg-amber-100 px-1.5 py-0.5 rounded text-amber-900 text-[11px]">
+                    {simulateMode === "existing" && simulateSelectedUserId
+                      ? `${adminUsers.find((u) => u.id === simulateSelectedUserId)?.fullName || "Usuario"} (${simulateRole})`
+                      : simulateRole}
+                  </span>
+                </p>
+              </div>
+              <ul className="list-disc list-inside text-[11px] space-y-0.5 text-amber-900/90 font-medium">
+                <li>Verás exclusivamente el catálogo y códigos CAByS de <strong>{simulateTargetEst.app_name || simulateTargetEst.name}</strong>.</li>
+                <li>Verás únicamente las facturas, tiquetes y clientes de esta empresa.</li>
+                <li>Barra superior ámbar activa para salir con 1 clic y volver al Centro de Mando.</li>
               </ul>
             </div>
 
