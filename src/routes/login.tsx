@@ -21,11 +21,16 @@ import { supabase, type Role } from "@/lib/supabase";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/login")({
-  validateSearch: (search: Record<string, unknown>) => ({
-    mode: (search.mode as "login" | "register") || undefined,
-    cedula: (search.cedula as string) || undefined,
-    empresa: (search.empresa as string) || undefined,
-    code: (search.code as string) || undefined,
+  validateSearch: (search: Record<string, unknown>): {
+    mode?: "login" | "register";
+    cedula?: string;
+    empresa?: string;
+    code?: string;
+  } => ({
+    mode: search.mode === "register" || search.mode === "login" ? search.mode : undefined,
+    cedula: search.cedula != null ? String(search.cedula) : undefined,
+    empresa: search.empresa != null ? String(search.empresa) : undefined,
+    code: search.code != null ? String(search.code) : undefined,
   }),
   component: LoginPage,
 });
@@ -38,22 +43,26 @@ function LoginPage() {
     if (typeof window !== "undefined") {
       const sp = new URLSearchParams(window.location.search);
       const val = sp.get(key);
-      if (val) return val;
+      if (val != null) return String(val);
     }
-    return ((search as any)?.[key] as string) || "";
+    const val = (search as any)?.[key];
+    return val != null ? String(val) : "";
   };
 
-  const [mode, setMode] = useState<"login" | "register">(() => {
+  const isRegisterParam = () => {
     if (typeof window !== "undefined") {
       const sp = new URLSearchParams(window.location.search);
-      if (sp.get("mode") === "register" || sp.get("cedula")) return "register";
-      if (sp.get("mode") === "login") return "login";
+      if (sp.get("mode") === "register" || sp.get("cedula")) return true;
+      if (sp.get("mode") === "login") return false;
     }
-    return search?.mode === "register" || search?.cedula ? "register" : "login";
-  });
+    return search?.mode === "register" || Boolean(search?.cedula);
+  };
+
+  const [mode, setMode] = useState<"login" | "register">(() => (isRegisterParam() ? "register" : "login"));
   const [loading, setLoading] = useState(false);
   const [checkingSession, setCheckingSession] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
+  const [activeSessionUser, setActiveSessionUser] = useState<any | null>(null);
 
   // Campos de formulario
   const [email, setEmail] = useState("");
@@ -61,14 +70,15 @@ function LoginPage() {
   const [fullName, setFullName] = useState("");
 
   // Campos específicos de Registro del Dueño de la Empresa
-  const [cedula, setCedula] = useState(() => getClientParam("cedula"));
-  const [companyLegalName, setCompanyLegalName] = useState(() => getClientParam("empresa"));
+  const [cedula, setCedula] = useState<string>(() => String(getClientParam("cedula") || ""));
+  const [companyLegalName, setCompanyLegalName] = useState<string>(() => String(getClientParam("empresa") || ""));
   const [validatingCedula, setValidatingCedula] = useState(false);
   const [cedulaValidation, setCedulaValidation] = useState<any | null>(null);
 
   // Validación de Cédula de la Empresa ante el Padrón Oficial de Hacienda
-  const validateCedulaHacienda = async (idNum: string) => {
-    const clean = idNum.replace(/\D/g, "");
+  const validateCedulaHacienda = async (idNum: unknown) => {
+    const raw = String(idNum ?? "").trim();
+    const clean = raw.replace(/\D/g, "");
     if (clean.length < 9) {
       setCedulaValidation(null);
       return;
@@ -80,9 +90,10 @@ function LoginPage() {
         const data = await res.json();
         if (data && data.nombreCompleto) {
           setCedulaValidation(data);
-          if (!companyLegalName) {
-            setCompanyLegalName(data.nombreCompleto);
-          }
+          setCompanyLegalName((prev) => {
+            const prevStr = String(prev ?? "").trim();
+            return !prevStr ? data.nombreCompleto : prev;
+          });
         } else {
           setCedulaValidation(null);
         }
@@ -98,12 +109,18 @@ function LoginPage() {
   };
 
   useEffect(() => {
-    if (search?.cedula) {
-      setCedula(search.cedula);
+    const rawCedula = search?.cedula != null ? String(search.cedula) : "";
+    const rawEmpresa = search?.empresa != null ? String(search.empresa) : "";
+
+    if (rawCedula) {
+      setCedula(rawCedula);
       setMode("register");
-      validateCedulaHacienda(search.cedula);
+      validateCedulaHacienda(rawCedula);
     }
-  }, [search?.cedula]);
+    if (rawEmpresa) {
+      setCompanyLegalName(rawEmpresa);
+    }
+  }, [search?.cedula, search?.empresa]);
 
   // Resolver el destino y establecimiento del usuario según su rol y correo
   const resolveDestinationAndEstablishment = async (userObj: { id: string; email?: string }) => {
@@ -178,8 +195,15 @@ function LoginPage() {
     // Si ya existe sesión activa, resolver a dónde corresponde ir
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (session?.user) {
-        const dest = await resolveDestinationAndEstablishment(session.user);
-        navigate({ to: dest.target });
+        if (isRegisterParam()) {
+          // Si el usuario llega por enlace de invitación/registro de empresa (ej. con el dueño presente)
+          // permitimos que el formulario se muestre sin redirigirlo abruptamente al admin
+          setActiveSessionUser(session.user);
+          setCheckingSession(false);
+        } else {
+          const dest = await resolveDestinationAndEstablishment(session.user);
+          navigate({ to: dest.target });
+        }
       } else {
         setCheckingSession(false);
       }
@@ -229,15 +253,17 @@ function LoginPage() {
 
   const handleRegister = async (e: FormEvent) => {
     e.preventDefault();
-    if (!cedula.trim()) {
+    const cleanCedula = String(cedula || "").replace(/\D/g, "");
+    const rawCedula = String(cedula || "").trim();
+    if (!rawCedula) {
       toast.error("Por favor ingresa la cédula jurídica o física de tu empresa");
       return;
     }
-    if (!fullName.trim()) {
+    if (!String(fullName || "").trim()) {
       toast.error("Por favor ingresa tu nombre como dueño o representante");
       return;
     }
-    if (!email.trim() || !password.trim()) {
+    if (!String(email || "").trim() || !String(password || "").trim()) {
       toast.error("Por favor completa tu correo y crea tu contraseña");
       return;
     }
@@ -248,9 +274,8 @@ function LoginPage() {
 
     setLoading(true);
     try {
-      const cleanCedula = cedula.replace(/\D/g, "");
       const resolvedCompanyName =
-        companyLegalName.trim() ||
+        String(companyLegalName || "").trim() ||
         cedulaValidation?.nombreCompleto ||
         `Empresa ${cleanCedula}`;
       const activityCode =
@@ -260,7 +285,7 @@ function LoginPage() {
       const { data: existingEsts } = await supabase
         .from("establishments")
         .select("*")
-        .or(`legal_id.eq.${cleanCedula},legal_id.eq.${cedula.trim()}`);
+        .or(`legal_id.eq.${cleanCedula},legal_id.eq.${rawCedula}`);
 
       let targetEst = existingEsts && existingEsts.length > 0 ? existingEsts[0] : null;
 
@@ -302,6 +327,19 @@ function LoginPage() {
           environment: "staging",
           is_active: true,
         });
+      } else if (!targetEst.email || targetEst.email.trim() === "") {
+        // Si el establecimiento ya existía pero no tenía email asociado, asociar el del dueño
+        await supabase
+          .from("establishments")
+          .update({ email: email.trim().toLowerCase() })
+          .eq("id", targetEst.id);
+      }
+
+      // Si había una sesión activa previa (ej. el SuperAdmin con el dueño presencialmente),
+      // cerrar la sesión previa para que el nuevo dueño quede con su propia cuenta limpia
+      const { data: curSession } = await supabase.auth.getSession();
+      if (curSession?.session) {
+        await supabase.auth.signOut();
       }
 
       // 3. Crear el usuario en Supabase Auth con su contraseña personal y metadata de empresa
@@ -411,6 +449,18 @@ function LoginPage() {
           </div>
 
           <form onSubmit={mode === "login" ? handleLogin : handleRegister} className="mt-5 space-y-3.5">
+            {activeSessionUser && mode === "register" && (
+              <div className="rounded-xl border border-blue-500/30 bg-blue-500/10 p-3 text-xs text-blue-900 dark:text-blue-200 space-y-1">
+                <p className="font-bold flex items-center gap-1.5">
+                  <ShieldCheck className="h-4 w-4 text-blue-600" />
+                  Sesión activa ({activeSessionUser.email})
+                </p>
+                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                  Estás activando el portal para el dueño. Al completar el registro, se creará su cuenta personal con sus propias credenciales.
+                </p>
+              </div>
+            )}
+
             {mode === "register" && (
               <>
                 {/* 1. Cédula Tributaria de la Empresa */}
@@ -428,9 +478,10 @@ function LoginPage() {
                       placeholder="Ej. 3102832920 ó 3-101-443322"
                       value={cedula}
                       onChange={(e) => {
-                        setCedula(e.target.value);
-                        if (e.target.value.replace(/\D/g, "").length >= 9) {
-                          validateCedulaHacienda(e.target.value);
+                        const val = e.target.value;
+                        setCedula(val);
+                        if (val.replace(/\D/g, "").length >= 9) {
+                          validateCedulaHacienda(val);
                         }
                       }}
                       onBlur={() => validateCedulaHacienda(cedula)}
@@ -440,7 +491,7 @@ function LoginPage() {
                     <button
                       type="button"
                       onClick={() => validateCedulaHacienda(cedula)}
-                      disabled={validatingCedula || !cedula.trim()}
+                      disabled={validatingCedula || !String(cedula || "").trim()}
                       className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded bg-primary/10 hover:bg-primary/20 px-2 py-1 text-[11px] font-bold text-primary transition-all disabled:opacity-50 cursor-pointer"
                     >
                       {validatingCedula ? <Loader2 className="h-3 w-3 animate-spin" /> : "Verificar"}

@@ -658,7 +658,9 @@ function CommandCenterStandalone() {
   const getInviteUrl = (est: any) => {
     if (!est) return "";
     const origin = typeof window !== "undefined" ? window.location.origin : "";
-    return `${origin}/login?mode=register&cedula=${est.legal_id}&empresa=${encodeURIComponent(est.app_name || est.name)}`;
+    const cleanId = String(est.legal_id || "").replace(/\D/g, "") || String(est.legal_id || "").trim();
+    const compName = encodeURIComponent(String(est.app_name || est.name || "").trim());
+    return `${origin}/login?mode=register&cedula=${cleanId}&empresa=${compName}`;
   };
 
   const getWhatsappInviteLink = (est: any) => {
