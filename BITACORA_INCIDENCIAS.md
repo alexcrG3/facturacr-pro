@@ -7,6 +7,32 @@
 
 ---
 
+### [2026-11-06 22:50] - Validación Criptográfica C14N XAdES-EPES ante Producción de Hacienda y Diagnóstico de Plataforma TRIBU-CR
+* **Módulos Afectados:**
+  - `src/lib/hacienda/signer.ts`
+  - `package.json`
+  - `package-lock.json`
+  - `BITACORA_INCIDENCIAS.md`
+* **Incidencias Reportadas:**
+  1. **Fallo de Policy Id en Validador de Hacienda:** En la primera transmisión en vivo a Hacienda en producción, el validador oficial rechazó el comprobante con: `"La firma del documento no tiene el Policy Id"`.
+  2. **Fallo de Canonicalización C14N:** En el segundo intento, la firma fue rechazada con: `"La firma del comprobante electrónico no es válida (El XML fue modificado luego de haber sido firmado)"` debido a discrepancias en el cálculo del digest sin árbol DOM canonicalizado.
+  3. **Error -85 de Concordancia de Contribuyente:** Al validar la firma correctamente, Hacienda devolvió el código `-85`: `"El contribuyente que se autentica no coincide con el emisor del documento electrónico"`.
+* **Causa Raíz:**
+  1. El validador de Hacienda exige la URL oficial de la resolución DGT-R-48-2016 (`https://tribunet.hacienda.go.cr/docs/esquemas/2016/v4/Resolucion%20Comprobantes%20Electronicos%20%20DGT-R-48-2016.pdf`), el hash SHA-1 `V8lVVNGDCPen6VELRD1Ja8HARFk=` y el número de serie X.509 en formato decimal base 10 (`1790800471853`), no en hexadecimal.
+  2. La canonicalización XMLDSIG (C14N) requiere un parser DOM estricto (`xmldom`) para que los namespaces, saltos de línea y atributos coincidan exactamente antes y después de insertar el bloque `<ds:Signature>`.
+  3. En la nueva plataforma **TRIBU-CR (Oficina Virtual OVi)**, las credenciales configuradas tenían prefijo `cpf-` (Persona Física del representante `04-0226-0544`), mientras que el emisor de la factura y del certificado `.p12` es la Persona Jurídica `3-102-832920` (Barberías BOSS Limitada).
+* **Cómo se resolvió:**
+  1. **Motor C14N con `haciendacostarica-signer` y `@xmldom/xmldom`:**
+     - Integrado el motor de firma XAdES-EPES canónico que ejecuta transformaciones `enveloped-signature` y `c14n` sobre el DOM real del comprobante.
+     - Superada al 100% la validación de firma digital por los servidores de Hacienda.
+  2. **Emparejamiento Criptográfico de Llave y Certificado:**
+     - Localización del certificado exacto del cliente dentro del contenedor PKCS#12 comparando el módulo de la clave pública con la privada (`certN === privN`).
+  3. **Documentación del Flujo TRIBU-CR:**
+     - Detallado el procedimiento en la Oficina Virtual (OVi) de TRIBU-CR para generar el usuario de producción específico de la persona jurídica (`cpj-...`).
+* **Prevención:** Toda firma digital para Hacienda Costa Rica debe ejecutarse sobre el árbol DOM con canonicalización C14N y verificar que el usuario de autenticación en TRIBU coincida estrictamente con el tipo y número de cédula del emisor del XML.
+
+---
+
 ### [2026-11-06 22:05] - Implementación de Firma Criptográfica Real XAdES-EPES (.p12 Multi-Tenant) y Conexión en Vivo con la API de Hacienda
 * **Módulos Afectados:**
   - `src/lib/hacienda/signer.ts`
