@@ -4,12 +4,12 @@
  */
 import forge from "node-forge";
 
-// OID y URL de la Política de Firma de Hacienda Costa Rica v4.3
+// OID y URL de la Política de Firma de Hacienda Costa Rica v4.3 / v4.4
 export const POLICY_HACIENDA = {
-  identifier: "https://cdn.comprobanteselectronicos.go.cr/xml-schemas/v4.3/politica-de-firma",
+  identifier: "https://cdn.comprobanteselectronicos.go.cr/xml-schemas/v4.3/politica-de-firma.pdf",
   description:
     "Política de firma del sistema de comprobantes electrónicos del Ministerio de Hacienda de Costa Rica",
-  hash: "V8/OICsApplication/hashPolicy==",
+  hash: "Ohixl6upDOSAcrtqlZugXQgOSfu1BpMrWBval+xYjdE=",
 };
 
 export interface SignerOptions {
@@ -128,7 +128,7 @@ export function firmarXmlHacienda({ xmlSinFirmar, p12CertBase64, pinP12 }: Signe
             <xades:SignaturePolicyIdentifier>
               <xades:SignaturePolicyId>
                 <xades:SigPolicyId>
-                  <xades:Identifier>${POLICY_HACIENDA.identifier}</xades:Identifier>
+                  <xades:Identifier Qualifier="OIDAsURI">${POLICY_HACIENDA.identifier}</xades:Identifier>
                   <xades:Description>${POLICY_HACIENDA.description}</xades:Description>
                 </xades:SigPolicyId>
                 <xades:SigPolicyHash>
