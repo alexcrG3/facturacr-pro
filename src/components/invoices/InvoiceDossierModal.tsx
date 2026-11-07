@@ -34,6 +34,8 @@ import {
   firmarXmlHacienda,
   generarMensajeHaciendaXml,
   obtenerDiagnosticoHacienda,
+  consultarEstadoHacienda,
+  HaciendaConfig,
 } from "@/lib/hacienda";
 
 export type DossierStatus = "borrador" | "pendiente" | "enviada" | "aceptada" | "rechazada";
@@ -364,17 +366,66 @@ export function InvoiceDossierModal({
     }
   };
 
-  const handleConsultLiveStatus = () => {
+  const handleConsultLiveStatus = async () => {
     setIsConsulting(true);
-    toast.info("Consultando estado en el servidor de Hacienda...");
-    setTimeout(() => {
-      setIsConsulting(false);
-      setCurrentStatus("aceptada");
-      if (onStatusChange && invoice) {
-        onStatusChange(invoice.id, "aceptada");
+    toast.info("Consultando estado oficial en el servidor de Hacienda...");
+
+    try {
+      const estId = activeEstablishment?.id || "default";
+      let savedHacienda: any = null;
+      try {
+        const localCfg = localStorage.getItem(`facturacr_hacienda_config_${estId}`);
+        if (localCfg) savedHacienda = JSON.parse(localCfg);
+      } catch {
+        // Ignorar
       }
-      toast.success("¡Hacienda confirmó la recepción! Estado actualizado a ACEPTADO.");
-    }, 1200);
+
+      const usuarioAtv = (savedHacienda?.usuarioAtv || activeEstablishment?.atv_username || "").trim();
+      const claveAtv = (savedHacienda?.claveAtv || activeEstablishment?.atv_password || "").trim();
+      const pinP12 = (savedHacienda?.pinP12 || activeEstablishment?.atv_pin || "").trim();
+      const p12Base64 = localStorage.getItem(`facturacr_p12_base64_${estId}`) || activeEstablishment?.p12_base64 || "";
+      const effectiveAmbiente = (savedHacienda?.ambiente || activeEstablishment?.atv_environment || "produccion") as "produccion" | "staging";
+
+      if (!usuarioAtv || !claveAtv) {
+        toast.warning("Sin credenciales de Hacienda", {
+          description: "Esta empresa no tiene credenciales ATV configuradas en Configuración > Integración Hacienda.",
+        });
+        setIsConsulting(false);
+        return;
+      }
+
+      const haciendaCfg: HaciendaConfig = {
+        ambiente: effectiveAmbiente,
+        usuarioAtv,
+        claveAtv,
+        pinP12,
+        p12CertBase64: p12Base64,
+      };
+
+      const res = await consultarEstadoHacienda(haciendaCfg, clave);
+
+      if (res.indEstado === "aceptado") {
+        setCurrentStatus("aceptada");
+        if (onStatusChange && invoice) {
+          onStatusChange(invoice.id, "aceptada");
+        }
+        toast.success("¡Hacienda confirmó la recepción! Estado oficial: ACEPTADO.");
+      } else if (res.indEstado === "rechazado") {
+        setCurrentStatus("rechazada");
+        if (onStatusChange && invoice) {
+          onStatusChange(invoice.id, "rechazada");
+        }
+        toast.error("Hacienda confirmó que el comprobante fue RECHAZADO.");
+      } else {
+        toast.info("El comprobante continúa en proceso de validación en Hacienda (202 En Trámite).");
+      }
+    } catch (err) {
+      toast.error("Error al consultar estado en Hacienda", {
+        description: err instanceof Error ? err.message : "Error de red",
+      });
+    } finally {
+      setIsConsulting(false);
+    }
   };
 
   return (

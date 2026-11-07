@@ -192,6 +192,7 @@ function SettingsPage() {
   const [pinP12, setPinP12] = useState(activeEstablishment?.atv_pin || "");
   const [codigoActividad, setCodigoActividad] = useState(activeEstablishment?.economic_activity_code || "");
   const [p12FileName, setP12FileName] = useState(cleanCedula ? `${cleanCedula}.p12` : "");
+  const [p12Base64, setP12Base64] = useState<string>(activeEstablishment?.p12_base64 || "");
   const [sucursal, setSucursal] = useState("1");
   const [terminal, setTerminal] = useState("1");
 
@@ -468,6 +469,7 @@ function SettingsPage() {
         setPinP12(parsed.pinP12 || activeEstablishment.atv_pin || "");
         setCodigoActividad(parsed.codigoActividad || activeEstablishment.economic_activity_code || "");
         setP12FileName(parsed.p12FileName || (cleanCed ? `${cleanCed}.p12` : ""));
+        setP12Base64(localStorage.getItem(`facturacr_p12_base64_${estId}`) || activeEstablishment.p12_base64 || "");
         setSucursal(parsed.sucursal || "1");
         setTerminal(parsed.terminal || "1");
       } else {
@@ -481,6 +483,7 @@ function SettingsPage() {
         setPinP12(activeEstablishment.atv_pin || "");
         setCodigoActividad(activeEstablishment.economic_activity_code || "");
         setP12FileName(cleanCed ? `${cleanCed}.p12` : "");
+        setP12Base64(localStorage.getItem(`facturacr_p12_base64_${estId}`) || activeEstablishment.p12_base64 || "");
         setSucursal("1");
         setTerminal("1");
       }
@@ -955,6 +958,9 @@ function SettingsPage() {
         savedAt: new Date().toISOString(),
       };
       localStorage.setItem(`facturacr_hacienda_config_${activeEstablishment.id}`, JSON.stringify(config));
+      if (p12Base64) {
+        localStorage.setItem(`facturacr_p12_base64_${activeEstablishment.id}`, p12Base64);
+      }
 
       // Guardar en Supabase PostgreSQL en la tabla establishments
       try {
@@ -966,6 +972,7 @@ function SettingsPage() {
             atv_password: claveAtv.trim() || null,
             atv_pin: pinP12.trim() || null,
             economic_activity_code: codigoActividad.trim() || null,
+            p12_base64: p12Base64 || null,
           })
           .eq("id", activeEstablishment.id);
 
@@ -978,6 +985,7 @@ function SettingsPage() {
           atv_password: claveAtv.trim(),
           atv_pin: pinP12.trim(),
           economic_activity_code: codigoActividad.trim(),
+          p12_base64: p12Base64 || undefined,
         });
         await loadEstablishments();
       } catch (e) {
@@ -1171,7 +1179,21 @@ function SettingsPage() {
                         className="hidden"
                         onChange={(e) => {
                           const file = e.target.files?.[0];
-                          if (file) setP12FileName(file.name);
+                          if (file) {
+                            setP12FileName(file.name);
+                            const reader = new FileReader();
+                            reader.onload = () => {
+                              const result = reader.result as string;
+                              const base64 = result.includes(",") ? result.split(",")[1] : result;
+                              setP12Base64(base64);
+                              if (activeEstablishment?.id) {
+                                // Aislamiento estricto por empresa: se guarda bajo la ID de este inquilino
+                                localStorage.setItem(`facturacr_p12_base64_${activeEstablishment.id}`, base64);
+                              }
+                              toast.success(`Llave criptográfica .p12 cargada para ${activeEstablishment?.name || "esta empresa"}`);
+                            };
+                            reader.readAsDataURL(file);
+                          }
                         }}
                       />
                     </label>

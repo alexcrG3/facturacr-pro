@@ -32,6 +32,9 @@ import {
   generarConsecutivo,
   construirXmlHacienda,
   firmarXmlHacienda,
+  enviarDocumentoHacienda,
+  consultarEstadoHacienda,
+  HaciendaConfig,
   TipoDocumento,
 } from "@/lib/hacienda";
 import { CabysFinderModal } from "@/components/common/CabysFinderModal";
@@ -864,7 +867,24 @@ function NewInvoice() {
           : undefined,
     });
 
-    const xmlFirmado = firmarXmlHacienda({ xmlSinFirmar: xmlRaw });
+    // Recuperar credenciales criptográficas estrictamente aisladas de la empresa activa
+    const estId = activeEstablishment?.id || "default";
+    let savedHacienda: any = null;
+    try {
+      const localCfg = localStorage.getItem(`facturacr_hacienda_config_${estId}`);
+      if (localCfg) savedHacienda = JSON.parse(localCfg);
+    } catch {
+      // Ignorar
+    }
+    const pinP12 = (savedHacienda?.pinP12 || activeEstablishment?.atv_pin || "").trim();
+    const p12Base64 =
+      localStorage.getItem(`facturacr_p12_base64_${estId}`) || activeEstablishment?.p12_base64 || "";
+
+    const xmlFirmado = firmarXmlHacienda({
+      xmlSinFirmar: xmlRaw,
+      p12CertBase64: p12Base64 || undefined,
+      pinP12: pinP12 || undefined,
+    });
     return { clave, consecutivo, xml: xmlFirmado };
   };
 
@@ -887,7 +907,7 @@ function NewInvoice() {
     navigate({ to: "/app/invoices" });
   };
 
-  const handleEmit = () => {
+  const handleEmit = async () => {
     // Validación de Hacienda para Factura Electrónica (01)
     if (docType === "01") {
       if (!recv.idNumber || !recv.name) {
@@ -922,8 +942,8 @@ function NewInvoice() {
     }
 
     setIsSubmitting(true);
-    setTimeout(async () => {
-      setIsSubmitting(false);
+
+    try {
       const { clave, consecutivo, xml } = buildInvoiceXml();
       const prefix = getDocPrefix(docType);
       const docNumber = `${prefix}-${consecutivo.slice(-6)}`;
@@ -952,16 +972,117 @@ function NewInvoice() {
         console.error("Error incrementando consecutivo en caja:", e);
       }
 
-      // 2. Guardar en Supabase para que aparezca en el listado de facturas
+      // 2. Obtener credenciales de Hacienda de esta empresa
+      const estId = activeEstablishment?.id || "default";
+      let savedHacienda: any = null;
       try {
-        const clientName = recv.name || (docType === "04" ? "Consumidor Final" : "Cliente General");
-        const clientLegalId = recv.idNumber || "";
+        const localCfg = localStorage.getItem(`facturacr_hacienda_config_${estId}`);
+        if (localCfg) savedHacienda = JSON.parse(localCfg);
+      } catch {
+        // Ignorar
+      }
 
+      const usuarioAtv = (savedHacienda?.usuarioAtv || activeEstablishment?.atv_username || "").trim();
+      const claveAtv = (savedHacienda?.claveAtv || activeEstablishment?.atv_password || "").trim();
+      const pinP12 = (savedHacienda?.pinP12 || activeEstablishment?.atv_pin || "").trim();
+      const p12Base64 = localStorage.getItem(`facturacr_p12_base64_${estId}`) || activeEstablishment?.p12_base64 || "";
+      const effectiveAmbiente = (savedHacienda?.ambiente || ambiente || activeEstablishment?.atv_environment || "produccion") as "produccion" | "staging";
+
+      const hasHaciendaCreds = Boolean(usuarioAtv && claveAtv);
+
+      let finalStatus: "aceptada" | "rechazada" | "pendiente" | "borrador" = "pendiente";
+
+      // 3. Transmisión a servidores de Hacienda si tiene credenciales
+      if (hasHaciendaCreds) {
+        const toastId = toast.loading("Transmitiendo comprobante a servidores de Hacienda...");
+
+        const emisorCedula = (activeEstablishment?.legal_id || "3-101-483899").replace(/\D/g, "");
+        const emisorTipo = (activeEstablishment?.legal_id_type as any) || (emisorCedula.length === 10 ? "02" : "01");
+
+        const haciendaCfg: HaciendaConfig = {
+          ambiente: effectiveAmbiente,
+          usuarioAtv,
+          claveAtv,
+          pinP12,
+          p12CertBase64: p12Base64,
+          codigoActividad: activeEstablishment?.economic_activity_code || "862001",
+          sucursal: parseInt(activeCaja.branch_code) || 1,
+          terminal: parseInt(activeCaja.terminal_code) || 1,
+        };
+
+        const sendResult = await enviarDocumentoHacienda(haciendaCfg, xml, {
+          clave,
+          fecha: new Date(),
+          emisorTipoId: emisorTipo,
+          emisorNumId: emisorCedula,
+          receptorTipoId: recv.idType || (recv.idNumber ? "01" : undefined),
+          receptorNumId: recv.idNumber?.replace(/\D/g, ""),
+        });
+
+        if (sendResult.ok && sendResult.status === 202) {
+          toast.loading("Recibido por Hacienda (Código 202). Esperando validación oficial...", { id: toastId });
+          finalStatus = "pendiente";
+
+          // Polling de verificación ante Hacienda (hasta 3 consultas espaciadas)
+          let verificado = false;
+          for (let intento = 1; intento <= 3; intento++) {
+            await new Promise((r) => setTimeout(r, 3500));
+            try {
+              const consulta = await consultarEstadoHacienda(haciendaCfg, clave);
+              if (consulta.indEstado === "aceptado") {
+                finalStatus = "aceptada";
+                verificado = true;
+                break;
+              } else if (consulta.indEstado === "rechazado") {
+                finalStatus = "rechazada";
+                verificado = true;
+                break;
+              }
+            } catch {
+              // Continúa el polling si hay delay
+            }
+          }
+
+          if (verificado && finalStatus === "aceptada") {
+            toast.success("¡Comprobante Oficial ACEPTADO por Hacienda!", {
+              id: toastId,
+              description: `Clave oficial ${clave.slice(0, 20)}... validada con éxito por Tributación.`,
+            });
+          } else if (verificado && finalStatus === "rechazada") {
+            toast.error("Hacienda RECHAZÓ el comprobante", {
+              id: toastId,
+              description: "Hacienda indicó que el documento no superó la validación tributaria.",
+            });
+          } else {
+            toast.info("Comprobante en proceso de validación en Hacienda", {
+              id: toastId,
+              description: "Hacienda recibió el documento con éxito (202). El estado final se reflejará en el listado.",
+            });
+          }
+        } else {
+          finalStatus = "rechazada";
+          toast.error("Error al transmitir a Hacienda", {
+            id: toastId,
+            description: sendResult.message || "No se pudo entregar el comprobante a Hacienda.",
+          });
+        }
+      } else {
+        finalStatus = "borrador";
+        toast.warning("Comprobante registrado internamente", {
+          description: `Esta empresa no tiene credenciales de Hacienda ATV configuradas en Configuración. Se guardó como comprobante interno #${docNumber}.`,
+        });
+      }
+
+      // 4. Guardar en Supabase PostgreSQL para el listado oficial
+      const clientName = recv.name || (docType === "04" ? "Consumidor Final" : "Cliente General");
+      const clientLegalId = recv.idNumber || "";
+
+      try {
         const { error } = await supabase.from("invoices").insert({
           clave: clave,
           consecutive_number: docNumber,
           issue_date: new Date().toISOString(),
-          status: "aceptada",
+          status: finalStatus,
           total: calc.grandTotal,
           subtotal: calc.subtotal,
           tax_total: calc.totalTax,
@@ -986,7 +1107,7 @@ function NewInvoice() {
             client: { name: clientName, email: recv.email || "cliente@correo.cr" },
             type: prefix,
             date: new Date().toISOString().split("T")[0],
-            status: "aceptada",
+            status: finalStatus,
             total: calc.grandTotal,
             xml,
           };
@@ -1006,15 +1127,14 @@ function NewInvoice() {
         total: calc.grandTotal,
         docNumber,
       });
-      toast.success(
-        docType === "04"
-          ? "¡Tiquete Electrónico emitido con éxito!"
-          : "¡Factura Electrónica emitida con éxito!",
-        {
-          description: `Clave oficial generada para Sucursal ${activeCaja.branch_code} · Terminal ${activeCaja.terminal_code} · Consecutivo #${currentSequenceNumber}.`,
-        },
-      );
-    }, 1200);
+    } catch (err) {
+      console.error("Error general en emisión:", err);
+      toast.error("Ocurrió un error inesperado al emitir", {
+        description: err instanceof Error ? err.message : "Error desconocido",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleCopyClave = (clave: string) => {

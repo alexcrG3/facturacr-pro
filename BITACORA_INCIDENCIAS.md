@@ -7,6 +7,40 @@
 
 ---
 
+### [2026-11-06 22:05] - Implementación de Firma Criptográfica Real XAdES-EPES (.p12 Multi-Tenant) y Conexión en Vivo con la API de Hacienda
+* **Módulos Afectados:**
+  - `src/lib/hacienda/signer.ts`
+  - `src/lib/hacienda/client.ts`
+  - `src/routes/app.invoices.new.tsx`
+  - `src/routes/app.settings.tsx`
+  - `src/components/invoices/InvoiceDossierModal.tsx`
+  - `package.json`
+* **Incidencias Reportadas:**
+  1. **Simulación de Factura Aprobada:** Al presionar "Emitir y enviar a Hacienda", el sistema guardaba directamente en Supabase con `status: "aceptada"` sin transmitir el XML al Ministerio de Hacienda.
+  2. **Firma Digital Cascarón:** `signer.ts` generaba una estructura XAdES con digests truncados simulados sin extraer la llave privada RSA ni el certificado del `.p12`.
+  3. **Riesgo Multi-inquilino de Certificados:** Cada empresa que adquiere el SaaS posee su propia llave criptográfica `.p12` y PIN exclusivo emitido por el BCCR / Hacienda; no se pueden compartir ni mezclar entre inquilinos.
+  4. **Carga de Llave .p12 Incompleta:** En la vista de Configuración se guardaba únicamente el nombre del archivo `.p12` sin almacenar su contenido binario Base64 para el motor de firma.
+* **Causa Raíz:**
+  1. Durante la fase de prototipado se utilizó un temporizador `setTimeout` para facilitar pruebas visuales sin depender de credenciales ATV en cada clic.
+  2. El lector de archivos en `app.settings.tsx` no ejecutaba `FileReader.readAsDataURL` para capturar los bytes del certificado.
+* **Cómo se resolvió:**
+  1. **Motor Criptográfico Real con `node-forge` (`signer.ts`):**
+     - Integrada la librería estándar `node-forge` para decodificar el formato PKCS#12, extraer de forma segura la llave privada RSA y el certificado X.509 de la empresa emisora.
+     - Cálculo matemático y criptográfico real de digests SHA-256 para el XML canonizado, las `SignedProperties` y el `KeyInfo`.
+     - Firma digital RSA-SHA256 aplicada sobre `SignedInfo` e inserción del certificado en Base64 con emisor y número de serie real.
+  2. **Aislamiento Multi-Tenant de Firma (.p12):**
+     - Tanto en Configuración como en Emisión y Expediente, los datos criptográficos (`p12_base64`, `pinP12`, `usuarioAtv`, `claveAtv`) se aíslan estrictamente bajo el identificador único del establecimiento (`activeEstablishment.id`).
+     - Ninguna empresa puede firmar con el certificado de otra. Si una empresa no ha cargado su `.p12`, el sistema no simula aprobación y emite un comprobante interno.
+  3. **Conexión en Vivo y Consulta Asíncrona en Emisión (`app.invoices.new.tsx`):**
+     - Sustituido el `status: "aceptada"` inmediato por el despacho real a `enviarDocumentoHacienda`.
+     - Manejo oficial del código HTTP `202 Accepted` de Hacienda, marcando la factura inicialmente como `pendiente/procesando`.
+     - Ciclo de consulta automática (polling) con `consultarEstadoHacienda`: si Hacienda responde `aceptado`, se actualiza a `aceptada`; si Hacienda rechaza por motivos tributarios, se actualiza a `rechazada` y se alerta al usuario.
+  4. **Expediente Digital Conectado (`InvoiceDossierModal.tsx`):**
+     - El botón "Consultar estado en Hacienda" ejecuta la consulta real al endpoint de Hacienda usando la clave de 50 dígitos de la factura.
+* **Prevención:** Jamás asumir una factura como "aceptada" en el frontend sin recibir la confirmación o código 202 de Hacienda. Mantener el aislamiento por ID de establecimiento en todos los almacenamientos de llaves criptográficas.
+
+---
+
 ### [2026-11-06 21:30] - Overhaul de Responsividad Móvil PWA, Barra Superior Fija, Selector de Plantillas y Control de Acceso a API para Inquilinos
 * **Módulos Afectados:**
   - `src/styles.css`
