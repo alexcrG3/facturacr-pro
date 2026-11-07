@@ -74,7 +74,7 @@ function Dashboard() {
   ).length;
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6">
+    <div className="mx-auto max-w-7xl space-y-6 w-full min-w-0 overflow-x-clip">
       <PageHeader
         title={activeEstablishment ? `Panel: ${activeEstablishment.app_name || activeEstablishment.name} 👋` : "Bienvenido a FacturaOS 👋"}
         description={
@@ -83,12 +83,12 @@ function Dashboard() {
             : "Aquí tienes el resumen en tiempo real de tu operación comercial."
         }
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
             <Link
               to="/app/invoices/new"
-              className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-2 text-xs font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 transition-all"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-2 text-xs font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 transition-all whitespace-nowrap"
             >
-              <Plus className="h-4 w-4" /> Nueva Factura
+              <Plus className="h-4 w-4 shrink-0" /> Nueva Factura
             </Link>
           </div>
         }
@@ -180,16 +180,25 @@ function Dashboard() {
         ) : (
           <ul className="divide-y divide-border">
             {invoices.slice(0, 5).map((inv) => (
-              <li key={inv.id} className="flex items-center justify-between px-5 py-3.5 hover:bg-muted/40 transition-colors text-xs">
-                <div className="flex items-center gap-3">
-                  <FileText className="h-4 w-4 text-primary" />
-                  <div>
-                    <span className="font-semibold text-foreground block">{inv.consecutiveNumber || inv.id}</span>
-                    <span className="text-muted-foreground">{inv.client?.name || "Cliente Contado"}</span>
+              <li
+                key={inv.id}
+                className="flex items-center justify-between gap-2 px-3.5 sm:px-5 py-3 hover:bg-muted/40 transition-colors text-xs"
+              >
+                <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                  <FileText className="h-4 w-4 text-primary shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <span className="font-semibold text-foreground truncate block font-mono text-xs">
+                      {inv.consecutiveNumber || inv.id}
+                    </span>
+                    <span className="text-muted-foreground truncate block text-[11px]">
+                      {inv.client?.name || "Cliente Contado"}
+                    </span>
                   </div>
                 </div>
-                <div className="flex items-center gap-3">
-                  <span className="font-mono font-semibold">{formatCRC(inv.total || 0)}</span>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="font-mono font-bold text-xs tabular-nums text-foreground">
+                    {formatCRC(inv.total || 0)}
+                  </span>
                   {inv.status && <StatusBadge status={inv.status} />}
                 </div>
               </li>

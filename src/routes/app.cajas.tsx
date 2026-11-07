@@ -517,27 +517,27 @@ function CajasPage() {
   });
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6">
+    <div className="mx-auto max-w-7xl space-y-6 w-full min-w-0 overflow-x-clip">
       <PageHeader
         title="Mantenimiento de Cajas y Numeración"
         description="Configuración de sucursales, cajas o puntos de venta y continuación de numeración consecutiva autorizada por Hacienda."
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
             <button
               type="button"
               onClick={() => {
                 if (cajasList.length > 0) openNumeracionModal(cajasList[0]);
               }}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3.5 py-2 text-xs font-semibold text-foreground hover:bg-muted shadow-xs transition-colors cursor-pointer"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3.5 py-2 text-xs font-semibold text-foreground hover:bg-muted shadow-xs transition-colors cursor-pointer whitespace-nowrap"
             >
-              <Settings2 className="h-4 w-4 text-primary" /> Configurar numeración
+              <Settings2 className="h-4 w-4 text-primary shrink-0" /> Configurar numeración
             </button>
             <button
               type="button"
               onClick={() => setIsAddCajaModalOpen(true)}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 text-xs font-semibold shadow-sm transition-colors cursor-pointer"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 text-xs font-semibold shadow-sm transition-colors cursor-pointer whitespace-nowrap"
             >
-              <Plus className="h-4 w-4" /> Añadir caja
+              <Plus className="h-4 w-4 shrink-0" /> Añadir caja
             </button>
           </div>
         }
@@ -578,7 +578,102 @@ function CajasPage() {
 
       {/* Tabla de Cajas */}
       <div className="rounded-xl border border-border bg-card shadow-soft overflow-hidden">
-        <div className="overflow-x-auto">
+        {/* ─── VISTA MÓVIL (CARDS) ─── */}
+        <div className="md:hidden divide-y divide-border">
+          {filteredCajas.length === 0 ? (
+            <div className="py-12 px-4 text-center text-muted-foreground">
+              <Store className="mx-auto h-10 w-10 text-muted-foreground/30 mb-2" />
+              <p className="text-sm font-semibold text-foreground">No se encontraron cajas registradas</p>
+            </div>
+          ) : (
+            filteredCajas.map((caja) => (
+              <div key={caja.id} className="p-3.5 space-y-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                    <div className="grid h-9 w-9 place-items-center rounded-lg bg-primary/10 text-primary font-bold font-mono text-xs shrink-0">
+                      {caja.branch_code}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-mono font-bold text-xs text-foreground flex items-center gap-1">
+                          <Store className="h-3.5 w-3.5 text-primary" />
+                          {caja.terminal_code}
+                        </span>
+                        {caja.is_active === false && (
+                          <span className="rounded-full bg-amber-500/10 px-1.5 py-0.2 text-[9px] font-bold text-amber-600">
+                            Desactivada
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs font-semibold text-foreground truncate mt-0.5">
+                        {caja.terminal_name}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground truncate">
+                        {caja.branch_name} (Sucursal {caja.branch_code})
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => openEditCajaModal(caja)}
+                      className="rounded-lg p-1.5 text-muted-foreground hover:bg-primary/10 hover:text-primary transition-colors border border-border/50"
+                      title="Editar nombre"
+                    >
+                      <Edit2 className="h-3.5 w-3.5" />
+                    </button>
+                    {caja.branch_code === "001" && caja.terminal_code === "00001" ? (
+                      <button
+                        type="button"
+                        onClick={() => handleOpenDeleteCajaModal(caja)}
+                        className="rounded-lg p-1.5 text-amber-600 hover:bg-amber-500/10 transition-colors border border-border/50"
+                        title="Caja Principal protegida"
+                      >
+                        <Lock className="h-3.5 w-3.5 text-amber-500" />
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => handleOpenDeleteCajaModal(caja)}
+                        className="rounded-lg p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors border border-border/50"
+                        title="Eliminar o desactivar"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Consecutivos */}
+                <div className="flex flex-wrap gap-1.5 font-mono text-[11px]">
+                  <span className="rounded bg-primary/10 px-2 py-0.5 text-primary font-bold">
+                    FE: #{caja.next_invoice_number}
+                  </span>
+                  <span className="rounded bg-emerald-500/10 px-2 py-0.5 text-emerald-600 dark:text-emerald-400 font-bold">
+                    TE: #{caja.next_ticket_number}
+                  </span>
+                  <span className="rounded bg-amber-500/10 px-2 py-0.5 text-amber-700 dark:text-amber-300 font-bold">
+                    NC: #{caja.next_credit_note_number}
+                  </span>
+                </div>
+
+                {/* Botón configurar numeración */}
+                <button
+                  type="button"
+                  onClick={() => openNumeracionModal(caja)}
+                  className="w-full inline-flex items-center justify-between gap-2 rounded-lg border border-border bg-background px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted/40 transition-colors"
+                >
+                  <span className="truncate">Configurar próximos consecutivos</span>
+                  <ArrowRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* ─── VISTA DESKTOP (TABLA) ─── */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-xs text-left">
             <thead className="border-b border-border bg-muted/40 font-semibold text-muted-foreground uppercase text-[11px] tracking-wider">
               <tr>
@@ -701,7 +796,7 @@ function CajasPage() {
                 ¿Ha emitido comprobantes electrónicos desde otra aplicación y ya tiene comprobantes emitidos con una numeración?
               </h3>
               <p className="text-xs text-muted-foreground max-w-3xl leading-relaxed">
-                Si ya ha emitido comprobantes electrónicos desde otra aplicación distinta (como Tica Factura, GTI, Factun u otro software) no se preocupe: puede configurar la numeración para continuar con su numeración de forma consecutiva y así evitar que Hacienda rechace comprobantes por secuencias anteriores o duplicadas.
+                Si ya ha emitido comprobantes electrónicos desde otra aplicación o software previo, no se preocupe: puede configurar la numeración para continuar de forma consecutiva y así evitar que Hacienda rechace comprobantes por secuencias duplicadas o desfasadas.
               </p>
             </div>
           </div>

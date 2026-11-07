@@ -195,26 +195,29 @@ function ProductsPage() {
   });
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6">
+    <div className="mx-auto max-w-7xl space-y-6 w-full min-w-0 overflow-x-clip">
       <PageHeader
         title="Productos y Servicios"
         description="Catálogo de artículos y códigos CABYS (13 dígitos) autorizados por el Ministerio de Hacienda y BCCR."
         actions={
-          <div className="flex items-center gap-2.5">
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
             <button
               onClick={() => {
                 setCabysSearchTarget("catalog_add");
                 setIsCabysModalOpen(true);
               }}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-3.5 py-2 text-sm font-medium text-primary hover:bg-primary/20 transition-all shadow-sm"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-xs font-semibold text-primary hover:bg-primary/20 transition-all shadow-xs whitespace-nowrap"
             >
-              <Sparkles className="h-4 w-4" /> Buscar en Catálogo CABYS (BCCR)
+              <Sparkles className="h-4 w-4 shrink-0" />
+              <span className="hidden sm:inline">Buscar en Catálogo CABYS (BCCR)</span>
+              <span className="sm:hidden">Buscar CABYS</span>
             </button>
             <button
               onClick={handleOpenCreate}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-2 text-sm font-medium text-primary-foreground hover:shadow-glow transition-all"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-2 text-xs font-semibold text-primary-foreground hover:shadow-glow transition-all shadow-xs whitespace-nowrap"
             >
-              <Plus className="h-4 w-4" /> Nuevo producto o servicio
+              <Plus className="h-4 w-4 shrink-0" />
+              <span>Nuevo producto</span>
             </button>
           </div>
         }
@@ -242,7 +245,109 @@ function ProductsPage() {
       </div>
 
       <div className="overflow-hidden rounded-xl border border-border bg-card shadow-soft">
-        <div className="overflow-x-auto">
+        {/* ─── VISTA MÓVIL (CARDS) ─── */}
+        <div className="md:hidden divide-y divide-border">
+          {filtered.length === 0 ? (
+            <div className="py-12 px-4 text-center text-muted-foreground">
+              <Package className="mx-auto h-10 w-10 text-muted-foreground/30 mb-2" />
+              <p className="text-sm font-semibold text-foreground">Sin productos registrados</p>
+              <p className="text-xs text-muted-foreground mt-1">No hay productos que coincidan con la búsqueda.</p>
+            </div>
+          ) : (
+            filtered.map((p) => {
+              const low = p.stock > 0 && p.stock < p.minStock;
+              const out = p.stock === 0 && p.category !== "Servicios";
+              const isCopied = copiedCabys === p.cabys;
+
+              return (
+                <div key={p.id} className="p-3.5 space-y-2.5">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                      <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
+                        <Package className="h-4 w-4" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <h4 className="font-bold text-xs text-foreground truncate">{p.name}</h4>
+                        <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground mt-0.5">
+                          {p.sku && <span className="font-mono">{p.sku} • </span>}
+                          <span>{p.category}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenEdit(p)}
+                        className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-primary transition-colors border border-border/50"
+                        title="Editar"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteProduct(p.id, p.name)}
+                        className="rounded-lg p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors border border-border/50"
+                        title="Eliminar"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-2 text-xs">
+                    <div className="flex items-center gap-1 font-mono text-[11px] bg-muted/60 px-2 py-0.5 rounded-md">
+                      <span className="text-muted-foreground">CABYS:</span>
+                      <strong className="text-foreground">{p.cabys || "8523499000000"}</strong>
+                      <button
+                        type="button"
+                        onClick={() => handleCopyCabys(p.cabys || "8523499000000")}
+                        className="p-0.5 hover:text-foreground text-muted-foreground ml-1"
+                        title="Copiar"
+                      >
+                        {isCopied ? <Check className="h-3 w-3 text-emerald-500" /> : <Copy className="h-3 w-3" />}
+                      </button>
+                    </div>
+
+                    <div className="text-right">
+                      <span className="font-mono font-black text-sm text-foreground tabular-nums">
+                        {formatCRC(p.price)}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-1 text-[11px] border-t border-border/50">
+                    <span className="text-muted-foreground">
+                      IVA: <strong className="text-foreground">{p.tax}%</strong>
+                      {p.category !== "Servicios" && ` • Stock: ${p.stock}`}
+                    </span>
+
+                    {p.category === "Servicios" ? (
+                      <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold text-primary">
+                        Servicio
+                      </span>
+                    ) : out ? (
+                      <span className="rounded-full bg-destructive/10 px-2 py-0.5 text-[10px] font-bold text-destructive">
+                        Agotado
+                      </span>
+                    ) : low ? (
+                      <span className="rounded-full bg-warning/20 px-2 py-0.5 text-[10px] font-bold text-warning-foreground">
+                        Stock bajo
+                      </span>
+                    ) : (
+                      <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-600">
+                        En stock
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* ─── VISTA DESKTOP (TABLA) ─── */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="border-b border-border bg-muted/40 text-xs uppercase tracking-wider text-muted-foreground">
               <tr>

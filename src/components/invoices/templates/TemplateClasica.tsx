@@ -116,8 +116,8 @@ export function TemplateClasica({
       </div>
 
       {/* ─── TABLA DE ARTÍCULOS ─── */}
-      <div className="border border-emerald-800 rounded overflow-hidden">
-        <table className="w-full text-left text-[11px]">
+      <div className="border border-emerald-800 rounded overflow-x-auto">
+        <table className="w-full text-left text-[11px] min-w-[500px]">
           <thead>
             <tr className="bg-emerald-700 text-white font-bold text-[10px] uppercase">
               <th className="py-1.5 px-2.5 w-10 text-center">CÓD</th>

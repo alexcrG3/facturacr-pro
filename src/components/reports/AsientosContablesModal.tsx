@@ -159,11 +159,11 @@ export function AsientosContablesModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-5xl max-h-[92vh] overflow-y-auto p-0">
-        <DialogHeader className="p-6 pb-4 border-b border-border bg-card sticky top-0 z-10 backdrop-blur-sm">
+      <DialogContent className="w-[calc(100vw-1rem)] sm:w-full sm:max-w-5xl max-h-[92vh] overflow-y-auto p-0">
+        <DialogHeader className="p-4 sm:p-6 pb-4 border-b border-border bg-card sticky top-0 z-10 backdrop-blur-sm">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div className="space-y-1">
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-500/10 px-2.5 py-0.5 text-xs font-bold text-blue-500">
                   <Scale className="h-3.5 w-3.5" /> Pólizas y Asientos NIIF
                 </span>
@@ -171,34 +171,33 @@ export function AsientosContablesModal({
                   <CheckCircle2 className="h-3 w-3" /> Debe = Haber (Cuadrado ₡0)
                 </span>
               </div>
-              <DialogTitle className="text-xl font-bold flex items-center gap-2">
+              <DialogTitle className="text-lg sm:text-xl font-bold flex items-center gap-2">
                 Exportador de Asientos Contables
               </DialogTitle>
               <DialogDescription className="text-xs text-muted-foreground">
-                Pólizas de diario automáticas para Softland, QuickBooks, Contalink o Excel. Período:{" "}
+                Pólizas de diario para Softland, QuickBooks o Excel. Período:{" "}
                 <span className="font-semibold text-foreground font-mono">
                   {periodoDesde} al {periodoHasta}
-                </span>{" "}
-                • {empresaNombre}
+                </span>
               </DialogDescription>
             </div>
 
             {/* Acciones principales */}
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-1 max-w-full">
               <button
                 type="button"
                 onClick={handleCopiarPortapapeles}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted transition-colors cursor-pointer"
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 sm:px-3 py-1.5 sm:py-2 text-xs font-semibold text-foreground hover:bg-muted transition-colors cursor-pointer whitespace-nowrap"
                 title="Copiar líneas tabuladas para pegar en Excel con Ctrl+V"
               >
                 {copiado ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5 text-primary" />}
-                {copiado ? "¡Copiado!" : "Copiar (Ctrl+V)"}
+                {copiado ? "¡Copiado!" : "Copiar"}
               </button>
 
               <button
                 type="button"
                 onClick={handleDescargarSoftlandCsv}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-3 py-2 text-xs font-semibold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-500/20 transition-colors cursor-pointer"
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-2.5 sm:px-3 py-1.5 sm:py-2 text-xs font-semibold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-500/20 transition-colors cursor-pointer whitespace-nowrap"
                 title="Descargar archivo CSV estructurado para Softland ERP"
               >
                 <Download className="h-3.5 w-3.5" /> Softland .CSV
@@ -207,7 +206,7 @@ export function AsientosContablesModal({
               <button
                 type="button"
                 onClick={handleDescargarQuickbooksCsv}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/20 transition-colors cursor-pointer"
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-2.5 sm:px-3 py-1.5 sm:py-2 text-xs font-semibold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/20 transition-colors cursor-pointer whitespace-nowrap"
                 title="Descargar archivo CSV estructurado para QuickBooks"
               >
                 <Download className="h-3.5 w-3.5" /> QuickBooks .CSV
@@ -216,7 +215,7 @@ export function AsientosContablesModal({
               <button
                 type="button"
                 onClick={handleDescargarExcel}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-2 text-xs font-bold text-primary-foreground shadow-sm hover:bg-primary/90 transition-all cursor-pointer"
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-primary px-3 sm:px-3.5 py-1.5 sm:py-2 text-xs font-bold text-primary-foreground shadow-sm hover:bg-primary/90 transition-all cursor-pointer whitespace-nowrap"
               >
                 <FileSpreadsheet className="h-4 w-4" /> Exportar Todo (.xlsx)
               </button>
@@ -342,9 +341,88 @@ export function AsientosContablesModal({
             </div>
           </div>
 
-          {/* Tabla de Asiento de Diario (Debe y Haber) */}
+          {/* Lista Móvil (Tarjetas) y Tabla Desktop de Asiento de Diario */}
           <div className="rounded-xl border border-border overflow-hidden shadow-xs bg-card">
-            <div className="overflow-x-auto">
+            {/* ─── VISTA MÓVIL (CARDS) ─── */}
+            <div className="md:hidden divide-y divide-border">
+              {asientoSeleccionado.lineas.length === 0 ? (
+                <div className="py-8 px-4 text-center text-muted-foreground text-xs">
+                  No hay movimientos registrados para este asiento en el período.
+                </div>
+              ) : (
+                asientoSeleccionado.lineas.map((linea, idx) => {
+                  const esDebe = linea.debe > 0;
+                  return (
+                    <div key={`${linea.cuenta}-${idx}`} className="p-3.5 space-y-2 text-xs">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5 font-mono text-[11px]">
+                            <span className="rounded bg-muted px-1.5 py-0.5 text-muted-foreground font-bold">
+                              #{idx + 1}
+                            </span>
+                            <span className="font-bold text-foreground">{linea.cuenta}</span>
+                            {linea.centroCosto && (
+                              <span className="text-[10px] text-muted-foreground">· CC: {linea.centroCosto}</span>
+                            )}
+                          </div>
+                          <p className={`font-semibold mt-1 ${esDebe ? "text-foreground" : "text-muted-foreground pl-2"}`}>
+                            {esDebe ? "" : "a/ "}{linea.nombreCuenta}
+                          </p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          {linea.debe > 0 ? (
+                            <div>
+                              <span className="text-[10px] text-muted-foreground block">DEBE</span>
+                              <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                                {formatCRC(linea.debe)}
+                              </span>
+                            </div>
+                          ) : (
+                            <div>
+                              <span className="text-[10px] text-muted-foreground block">HABER</span>
+                              <span className="font-mono font-bold text-blue-600 dark:text-blue-400">
+                                {formatCRC(linea.haber)}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      {linea.concepto && (
+                        <p className="text-[11px] text-muted-foreground bg-muted/40 p-2 rounded-lg leading-relaxed">
+                          {linea.concepto}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+              {/* Resumen Móvil de Totales */}
+              <div className="p-3.5 bg-muted/50 border-t border-border space-y-1.5 text-xs">
+                <div className="flex justify-between font-mono">
+                  <span className="text-muted-foreground font-bold uppercase text-[10px]">Total Debe:</span>
+                  <span className="font-bold text-emerald-600 dark:text-emerald-400">{formatCRC(asientoSeleccionado.totalDebe)}</span>
+                </div>
+                <div className="flex justify-between font-mono">
+                  <span className="text-muted-foreground font-bold uppercase text-[10px]">Total Haber:</span>
+                  <span className="font-bold text-blue-600 dark:text-blue-400">{formatCRC(asientoSeleccionado.totalHaber)}</span>
+                </div>
+                <div className="flex justify-between pt-1 border-t border-border/60">
+                  <span className="text-[11px] font-bold">Estado:</span>
+                  {asientoSeleccionado.cuadrado ? (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
+                      <CheckCircle2 className="h-3 w-3" /> Cuadrado (₡0)
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-bold text-rose-500">
+                      <AlertCircle className="h-3 w-3" /> Descuadre: {formatCRC(asientoSeleccionado.diferencia)}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* ─── VISTA DESKTOP (TABLA) ─── */}
+            <div className="hidden md:block overflow-x-auto">
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
                   <tr className="border-b border-border bg-muted/60 text-muted-foreground font-semibold">

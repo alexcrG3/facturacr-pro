@@ -19,9 +19,9 @@ function Onboarding() {
   const [step, setStep] = useState(1);
 
   return (
-    <div className="min-h-screen bg-muted/30">
+    <div className="min-h-screen w-full max-w-full overflow-x-hidden bg-muted/30">
       <div className="border-b border-border bg-card">
-        <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
+        <div className="mx-auto flex max-w-5xl items-center justify-between px-4 sm:px-6 py-4">
           <Logo />
           <span className="text-xs text-muted-foreground">
             Paso {step} de {steps.length}
@@ -29,17 +29,17 @@ function Onboarding() {
         </div>
       </div>
 
-      <div className="mx-auto max-w-3xl px-6 py-12">
-        <div className="mb-10 flex items-center justify-between">
+      <div className="mx-auto max-w-3xl px-4 sm:px-6 py-8 sm:py-12">
+        <div className="mb-8 sm:mb-10 flex items-center justify-between">
           {steps.map((s, idx) => {
             const Icon = s.icon;
             const done = step > s.n;
             const active = step === s.n;
             return (
               <div key={s.n} className="flex flex-1 items-center">
-                <div className="flex flex-col items-center gap-2">
+                <div className="flex flex-col items-center gap-1.5 sm:gap-2">
                   <div
-                    className={`grid h-10 w-10 place-items-center rounded-full border-2 transition-all ${
+                    className={`grid h-8 w-8 sm:h-10 sm:w-10 place-items-center rounded-full border-2 transition-all ${
                       done
                         ? "border-success bg-success text-success-foreground"
                         : active
@@ -47,23 +47,23 @@ function Onboarding() {
                           : "border-border bg-card text-muted-foreground"
                     }`}
                   >
-                    <Icon className="h-4 w-4" />
+                    <Icon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                   </div>
                   <span
-                    className={`text-xs font-medium ${active ? "text-foreground" : "text-muted-foreground"}`}
+                    className={`text-[10px] sm:text-xs font-medium text-center ${active ? "text-foreground font-bold" : "text-muted-foreground"}`}
                   >
                     {s.label}
                   </span>
                 </div>
                 {idx < steps.length - 1 && (
-                  <div className={`mx-2 h-px flex-1 ${step > s.n ? "bg-success" : "bg-border"}`} />
+                  <div className={`mx-1 sm:mx-2 h-px flex-1 ${step > s.n ? "bg-success" : "bg-border"}`} />
                 )}
               </div>
             );
           })}
         </div>
 
-        <div className="rounded-2xl border border-border bg-card p-8 shadow-elevated">
+        <div className="rounded-2xl border border-border bg-card p-5 sm:p-8 shadow-elevated">
           {step === 1 && (
             <Form
               title="Cuéntanos sobre tu empresa"

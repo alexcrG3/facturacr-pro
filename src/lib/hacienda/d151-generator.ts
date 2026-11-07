@@ -102,8 +102,8 @@ export function generarInformeD151({
   const proveedores: RegistroD151[] = Object.entries(mapaProveedores)
     .filter(([_, data]) => data.total >= umbral)
     .map(([cedula, data]) => ({
-      tipoOperacion: "COMPRA",
-      tipoCodigo: "C",
+      tipoOperacion: "COMPRA" as const,
+      tipoCodigo: "C" as const,
       tipoIdentificacion: determinarTipoCedula(cedula),
       numeroIdentificacion: cedula,
       nombreRazonSocial: data.nombre,
@@ -153,8 +153,8 @@ export function generarInformeD151({
   const clientes: RegistroD151[] = Object.entries(mapaClientes)
     .filter(([_, data]) => data.total >= umbral)
     .map(([cedula, data]) => ({
-      tipoOperacion: "VENTA",
-      tipoCodigo: "V",
+      tipoOperacion: "VENTA" as const,
+      tipoCodigo: "V" as const,
       tipoIdentificacion: determinarTipoCedula(cedula),
       numeroIdentificacion: cedula,
       nombreRazonSocial: data.nombre,

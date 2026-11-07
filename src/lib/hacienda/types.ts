@@ -56,9 +56,9 @@ export interface HaciendaConfig {
   pinP12: string;
   p12CertBase64?: string;
   p12NombreArchivo?: string;
-  codigoActividad: string;
-  sucursal: number;
-  terminal: number;
+  codigoActividad?: string;
+  sucursal?: number;
+  terminal?: number;
 }
 
 export interface EmisorHacienda {

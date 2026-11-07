@@ -220,7 +220,7 @@ function emptyLine(p?: any): Line {
 
 // ─────────────────────────────────────────────────────────────────────────────
 function NewInvoice() {
-  const { activeEstablishment } = useApp();
+  const { activeEstablishment, setActiveEstablishment } = useApp();
   const search = Route.useSearch();
   // Lista de clientes cargados desde Supabase
   const [allClients, setAllClients] = useState<any[]>([]);
@@ -248,7 +248,7 @@ function NewInvoice() {
     if (!activeEstablishment) return;
     getCompanyProducts(activeEstablishment).then((prods) => {
       setAllProducts(
-        prods.map((p) => ({
+        prods.map((p: any) => ({
           id: p.id,
           name: p.name,
           sku: p.sku || "",
@@ -318,13 +318,73 @@ function NewInvoice() {
 
   // Configuración de Hacienda y Ambiente (Staging vs Producción)
   const [ambiente, setAmbiente] = useState<"staging" | "produccion">(() => {
-    try {
-      const cfg = JSON.parse(localStorage.getItem("facturacr_hacienda_config") || "{}");
-      return cfg.ambiente || "staging";
-    } catch {
-      return "staging";
+    if (activeEstablishment?.atv_environment === "produccion") return "produccion";
+    const estId = activeEstablishment?.id;
+    if (estId) {
+      try {
+        const saved = localStorage.getItem(`facturacr_hacienda_config_${estId}`);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed.ambiente) return parsed.ambiente;
+        }
+      } catch {}
     }
+    return (activeEstablishment?.atv_environment as any) || "produccion";
   });
+
+  useEffect(() => {
+    if (!activeEstablishment) return;
+    const estId = activeEstablishment.id;
+    let env: "staging" | "produccion" = (activeEstablishment.atv_environment as any) || "produccion";
+    try {
+      const saved = localStorage.getItem(`facturacr_hacienda_config_${estId}`);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.ambiente) env = parsed.ambiente;
+      }
+    } catch {}
+    setAmbiente(env);
+  }, [activeEstablishment?.id, activeEstablishment?.atv_environment]);
+
+  const toggleAmbiente = async () => {
+    const nextAmbiente: "staging" | "produccion" = ambiente === "produccion" ? "staging" : "produccion";
+    setAmbiente(nextAmbiente);
+
+    if (activeEstablishment?.id) {
+      const estId = activeEstablishment.id;
+      const key = `facturacr_hacienda_config_${estId}`;
+      try {
+        const existing = JSON.parse(localStorage.getItem(key) || "{}");
+        localStorage.setItem(key, JSON.stringify({ ...existing, ambiente: nextAmbiente }));
+      } catch {}
+
+      try {
+        await supabase
+          .from("establishments")
+          .update({ atv_environment: nextAmbiente })
+          .eq("id", estId);
+
+        if (setActiveEstablishment) {
+          setActiveEstablishment({
+            ...activeEstablishment,
+            atv_environment: nextAmbiente,
+          });
+        }
+      } catch (err) {
+        console.error("Error al actualizar atv_environment:", err);
+      }
+    }
+
+    if (nextAmbiente === "produccion") {
+      toast.success("Ambiente cambiado a Producción Oficial", {
+        description: `Los comprobantes para ${activeEstablishment?.app_name || activeEstablishment?.name || "esta empresa"} se emitirán directamente ante la Dirección General de Tributación.`,
+      });
+    } else {
+      toast.warning("Ambiente cambiado a Modo Pruebas / Sandbox", {
+        description: "Los comprobantes serán de simulación y no tendrán validez tributaria ante Hacienda.",
+      });
+    }
+  };
 
   const [emisorActivityCode, setEmisorActivityCode] = useState(() => {
     return activeEstablishment?.economic_activity_code || "620901";
@@ -852,9 +912,9 @@ function NewInvoice() {
       // Normativa Hacienda 4.4 v2 (Cambio 4): Una Nota de Crédito no puede superar el monto de la factura referenciada
       if (docType === "03") {
         const originalInv = recentInvoices.find((i) => i.clave === ref.docKey.trim());
-        if (originalInv && total > Number(originalInv.total) + 0.01) {
+        if (originalInv && calc.total > Number(originalInv.total) + 0.01) {
           toast.error("Validación de Hacienda (Normativa 4.4 v2)", {
-            description: `El monto de la Nota de Crédito (₡${total.toLocaleString("es-CR")}) no puede superar el total de la factura original referenciada (₡${Number(originalInv.total).toLocaleString("es-CR")}).`,
+            description: `El monto de la Nota de Crédito (₡${calc.total.toLocaleString("es-CR")}) no puede superar el total de la factura original referenciada (₡${Number(originalInv.total).toLocaleString("es-CR")}).`,
           });
           return;
         }
@@ -974,92 +1034,96 @@ function NewInvoice() {
   };
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6 pb-16">
+    <div className="mx-auto max-w-7xl space-y-6 pb-16 w-full min-w-0 overflow-x-clip">
       {/* Topbar */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <Link
           to="/app/invoices"
           className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
         >
           <ArrowLeft className="h-4 w-4" /> Volver a facturas
         </Link>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
           <button
             type="button"
             onClick={handlePreview}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium hover:bg-muted transition-colors"
+            className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-xs sm:text-sm font-medium hover:bg-muted transition-colors whitespace-nowrap"
           >
-            <Eye className="h-4 w-4" /> Previsualizar
+            <Eye className="h-4 w-4 shrink-0" /> Previsualizar
           </button>
           <button
             type="button"
             onClick={handleSaveDraft}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium hover:bg-muted transition-colors"
+            className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-xs sm:text-sm font-medium hover:bg-muted transition-colors whitespace-nowrap"
           >
-            <Save className="h-4 w-4" /> Guardar borrador
+            <Save className="h-4 w-4 shrink-0" /> Guardar borrador
           </button>
           <button
             type="button"
             onClick={handleEmit}
             disabled={isSubmitting}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-2 text-sm font-medium text-primary-foreground shadow-soft hover:opacity-95 transition-all disabled:opacity-50"
+            className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 rounded-lg bg-primary px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-primary-foreground shadow-soft hover:opacity-95 transition-all disabled:opacity-50 whitespace-nowrap"
           >
             {isSubmitting ? (
               <>
-                <Loader2 className="h-4 w-4 animate-spin" /> Emitiendo...
+                <Loader2 className="h-4 w-4 animate-spin shrink-0" /> Emitiendo...
               </>
             ) : (
               <>
-                <Send className="h-4 w-4" /> Emitir y enviar a Hacienda
+                <Send className="h-4 w-4 shrink-0" /> Emitir y enviar a Hacienda
               </>
             )}
           </button>
         </div>
       </div>
 
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="font-display text-3xl font-semibold tracking-tight">
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <h1 className="font-display text-2xl sm:text-3xl font-semibold tracking-tight">
             Nuevo comprobante electrónico
           </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
+          <p className="mt-1 text-xs sm:text-sm text-muted-foreground leading-relaxed">
             Completá los datos según los requerimientos de la Dirección General de Tributación (v4.4 v2).
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <div
-            className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-xs shadow-sm ${
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={toggleAmbiente}
+            className={`inline-flex items-center gap-2 rounded-xl border px-3 py-1.5 text-xs font-semibold cursor-pointer transition-all shadow-xs ${
               ambiente === "staging"
-                ? "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300"
-                : "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                ? "border-amber-500/30 bg-amber-500/10 text-amber-700 hover:bg-amber-500/20 dark:text-amber-300"
+                : "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/20 dark:text-emerald-300"
             }`}
+            title="Toca para cambiar entre Modo Pruebas y Producción Oficial"
           >
             <span
-              className={`h-2.5 w-2.5 rounded-full ${
+              className={`h-2.5 w-2.5 rounded-full shrink-0 ${
                 ambiente === "staging" ? "bg-amber-500 animate-pulse" : "bg-emerald-500"
               }`}
             />
-            <span className="font-semibold">
-              {ambiente === "staging" ? "Modo Pruebas / Sandbox" : "Ambiente Producción"}
+            <span className="font-semibold whitespace-nowrap">
+              {ambiente === "staging" ? "🟡 Modo Pruebas" : "🟢 Producción Oficial"}
             </span>
-            <span className="text-muted-foreground">
+            <span className="text-muted-foreground hidden sm:inline whitespace-nowrap">
               {ambiente === "staging" ? "• Cero efecto tributario" : "• Emisión Oficial Real"}
             </span>
-          </div>
+          </button>
 
-          <Link
-            to="/app/settings"
-            className="rounded-lg border border-border bg-card px-2.5 py-2 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-            title="Cambiar entre modo Pruebas y Producción en Configuración"
+          <button
+            type="button"
+            onClick={toggleAmbiente}
+            className="rounded-lg border border-border bg-card px-2.5 py-1.5 text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-foreground transition-colors shrink-0 cursor-pointer"
+            title="Alternar entre modo Pruebas y Producción Oficial"
           >
-            Cambiar
-          </Link>
+            Cambiar a {ambiente === "staging" ? "Producción" : "Pruebas"}
+          </button>
         </div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-3">
+      <div className="grid gap-6 lg:grid-cols-3 w-full max-w-full min-w-0">
         {/* Columna principal */}
-        <div className="space-y-6 lg:col-span-2">
+        <div className="space-y-6 lg:col-span-2 w-full max-w-full min-w-0">
           {/* 1. Datos del documento */}
           <Section icon={FileText} title="Datos del documento" subtitle="Tipo de comprobante, condición y moneda">
             {/* Selector Rápido FE vs TE */}
@@ -1080,12 +1144,12 @@ function NewInvoice() {
                   <div className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg ${docType === "01" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
                     <FileText className="h-5 w-5" />
                   </div>
-                  <div>
-                    <div className="flex items-center gap-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-sm font-semibold text-foreground">Factura Electrónica (FE)</span>
                       <span className="rounded bg-primary/20 px-1.5 py-0.2 text-[10px] font-bold text-primary font-mono">01</span>
                     </div>
-                    <p className="text-xs text-muted-foreground mt-0.5">
+                    <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
                       Para empresas y contribuyentes. <strong>Requiere Cédula</strong> y otorga <strong>Crédito Fiscal de IVA</strong> y deducción de renta.
                     </p>
                   </div>
@@ -1114,12 +1178,12 @@ function NewInvoice() {
                   <div className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg ${docType === "04" ? "bg-emerald-600 text-white" : "bg-muted text-muted-foreground"}`}>
                     <FileCode className="h-5 w-5" />
                   </div>
-                  <div>
-                    <div className="flex items-center gap-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-sm font-semibold text-foreground">Tiquete Electrónico (TE)</span>
                       <span className="rounded bg-emerald-100 dark:bg-emerald-950/60 px-1.5 py-0.2 text-[10px] font-bold text-emerald-700 dark:text-emerald-300 font-mono">04</span>
                     </div>
-                    <p className="text-xs text-muted-foreground mt-0.5">
+                    <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
                       Para <strong>Consumidor Final</strong> / mostrador. <strong>Cédula opcional</strong>. No genera crédito fiscal de IVA para el comprador.
                     </p>
                   </div>
@@ -1159,9 +1223,9 @@ function NewInvoice() {
                 </div>
               </div>
 
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full sm:w-auto">
-                <div className="flex items-center gap-2 bg-background/90 dark:bg-card/90 p-1.5 rounded-xl border border-blue-500/30 shadow-2xs">
-                  <span className="text-[11px] font-bold text-foreground pl-1 whitespace-nowrap">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full sm:w-auto min-w-0">
+                <div className="flex items-center gap-2 bg-background/90 dark:bg-card/90 p-1.5 rounded-xl border border-blue-500/30 shadow-2xs w-full sm:w-auto min-w-0">
+                  <span className="text-[11px] font-bold text-foreground pl-1 whitespace-nowrap shrink-0">
                     Caja:
                   </span>
                   <select
@@ -1185,7 +1249,7 @@ function NewInvoice() {
                         }
                       }
                     }}
-                    className="text-xs rounded-lg border border-primary/40 bg-background px-3 py-1.5 font-bold text-foreground focus:outline-none focus:ring-2 focus:ring-primary shadow-xs cursor-pointer min-w-[210px]"
+                    className="text-xs rounded-lg border border-primary/40 bg-background px-2.5 py-1.5 font-bold text-foreground focus:outline-none focus:ring-2 focus:ring-primary shadow-xs cursor-pointer w-full min-w-0 max-w-full truncate"
                   >
                     {cajas.map((c) => (
                       <option key={c.id} value={c.id}>
@@ -1197,7 +1261,7 @@ function NewInvoice() {
 
                 <Link
                   to="/app/cajas"
-                  className="text-xs font-semibold text-primary hover:underline whitespace-nowrap text-right sm:text-left"
+                  className="text-xs font-semibold text-primary hover:underline whitespace-nowrap text-right sm:text-left shrink-0"
                   title="Configurar cajas y numeración de Hacienda"
                 >
                   Mantenimiento de cajas →
@@ -1263,20 +1327,20 @@ function NewInvoice() {
                   className={inputCls + " bg-muted/40"}
                 />
               </Field>
-              <div className="md:col-span-2">
+              <div className="md:col-span-2 min-w-0">
                 <Field label="Tu Actividad Económica Emisor (Hacienda CR)" required>
-                  <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-2.5 w-full min-w-0">
                     <input
                       value={emisorActivityCode}
                       onChange={(e) => setEmisorActivityCode(e.target.value)}
                       maxLength={8}
                       placeholder={activeEstablishment?.economic_activity_code || "620901"}
-                      className={inputCls + " font-mono text-xs max-w-[140px] font-bold"}
+                      className={inputCls + " font-mono text-xs w-full sm:max-w-[140px] font-bold"}
                       title="Actividad económica registrada ante Tributación"
                     />
-                    <div className="text-xs text-muted-foreground flex items-center gap-1.5 bg-muted/40 px-3 py-2 rounded-lg border border-border/60">
-                      <span className="font-bold text-foreground font-mono">{emisorActivityCode}:</span>
-                      <span>
+                    <div className="text-xs text-muted-foreground flex items-center gap-1.5 bg-muted/40 px-3 py-2 rounded-lg border border-border/60 min-w-0 flex-1">
+                      <span className="font-bold text-foreground font-mono shrink-0">{emisorActivityCode}:</span>
+                      <span className="truncate">
                         {activityDescriptions[emisorActivityCode.replace(/\D/g, "")] ||
                           activityDescriptions[emisorActivityCode] ||
                           "Actividad Económica Registrada ante Hacienda"}
@@ -1347,8 +1411,8 @@ function NewInvoice() {
               <label className="block text-xs font-semibold text-muted-foreground">
                 Buscar o Seleccionar Cliente Registrado
               </label>
-              <div className="flex items-center gap-2">
-                <div className="relative flex-1">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full min-w-0">
+                <div className="relative flex-1 min-w-0 w-full">
                   <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <select
                     value={clientId}
@@ -1373,7 +1437,7 @@ function NewInvoice() {
                         });
                       }
                     }}
-                    className={inputCls + " pl-9 font-medium"}
+                    className={inputCls + " pl-9 font-medium w-full min-w-0 max-w-full truncate"}
                   >
                     <option value="">-- Seleccionar cliente registrado ({allClients.length} disponibles) --</option>
                     {allClients.map((c) => (
@@ -1402,7 +1466,7 @@ function NewInvoice() {
                     });
                     toast.info("Formulario de cliente limpiado");
                   }}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-xs font-medium hover:bg-muted transition-colors shrink-0"
+                  className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-xs font-medium hover:bg-muted transition-colors shrink-0 whitespace-nowrap w-full sm:w-auto"
                   title="Limpiar campos para escribir un cliente nuevo"
                 >
                   <Plus className="h-3.5 w-3.5" /> Limpiar / Nuevo
@@ -1965,17 +2029,17 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-xl border border-border bg-card shadow-soft">
-      <header className="flex items-center gap-3 border-b border-border px-5 py-4">
-        <div className="grid h-9 w-9 place-items-center rounded-lg bg-primary/10 text-primary">
+    <section className="rounded-xl border border-border bg-card shadow-soft w-full max-w-full min-w-0 overflow-hidden">
+      <header className="flex items-center gap-3 border-b border-border p-3.5 sm:px-5 sm:py-4">
+        <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
           <Icon className="h-4 w-4" />
         </div>
-        <div>
-          <h3 className="text-sm font-semibold">{title}</h3>
-          {subtitle && <p className="text-xs text-muted-foreground">{subtitle}</p>}
+        <div className="min-w-0 flex-1">
+          <h3 className="text-sm font-semibold truncate">{title}</h3>
+          {subtitle && <p className="text-xs text-muted-foreground truncate">{subtitle}</p>}
         </div>
       </header>
-      <div className="p-5">{children}</div>
+      <div className="p-3.5 sm:p-5 w-full max-w-full min-w-0">{children}</div>
     </section>
   );
 }
@@ -2128,9 +2192,10 @@ function LineItem({
   };
 
   return (
-    <div className="rounded-xl border border-border bg-background/50">
-      <div className="grid grid-cols-12 items-center gap-2 p-3">
-        <div className="col-span-12 flex items-center gap-2 md:col-span-5">
+    <div className="rounded-xl border border-border bg-card/60 overflow-hidden shadow-xs">
+      {/* ─── VISTA DESKTOP (md+) ───────────────────────────────────────────── */}
+      <div className="hidden md:grid grid-cols-12 items-center gap-2 p-3">
+        <div className="col-span-5 flex items-center gap-2">
           <span className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-muted text-[11px] font-semibold text-muted-foreground">
             {index}
           </span>
@@ -2175,7 +2240,7 @@ function LineItem({
             ))}
           </datalist>
         </div>
-        <div className="col-span-4 md:col-span-2 relative flex items-center">
+        <div className="col-span-2 relative flex items-center">
           <input
             value={line.cabys}
             onChange={(e) => handleCabysInput(e.target.value)}
@@ -2219,7 +2284,7 @@ function LineItem({
           step="0.01"
           value={line.qty}
           onChange={(e) => onChange({ qty: +e.target.value })}
-          className="col-span-2 h-9 rounded-md border border-border bg-background px-2 text-sm tabular-nums md:col-span-1"
+          className="col-span-1 h-9 rounded-md border border-border bg-background px-2 text-sm tabular-nums"
         />
         <input
           type="number"
@@ -2227,9 +2292,9 @@ function LineItem({
           step="0.01"
           value={line.unitPrice}
           onChange={(e) => onChange({ unitPrice: +e.target.value })}
-          className="col-span-3 h-9 rounded-md border border-border bg-background px-2 text-sm tabular-nums md:col-span-2"
+          className="col-span-2 h-9 rounded-md border border-border bg-background px-2 text-sm tabular-nums"
         />
-        <div className="col-span-2 text-right text-sm font-semibold tabular-nums md:col-span-1">
+        <div className="col-span-1 text-right text-sm font-semibold tabular-nums">
           {formatCRC(line.total)}
         </div>
         <div className="col-span-1 flex justify-end gap-1">
@@ -2245,6 +2310,133 @@ function LineItem({
             className="grid h-8 w-8 place-items-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
           >
             <Trash2 className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+
+      {/* ─── VISTA MÓVIL OPTIMIZADA (<md) ─────────────────────────────────── */}
+      <div className="md:hidden p-3.5 space-y-2.5">
+        <div className="flex items-center gap-2">
+          <span className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-primary/10 text-[11px] font-bold text-primary">
+            {index}
+          </span>
+          <input
+            value={line.detail}
+            onChange={(e) => {
+              const val = e.target.value;
+              const matchedProduct = availableProducts.find(
+                (p) =>
+                  p.name.toLowerCase() === val.toLowerCase() ||
+                  (p.sku && p.sku.toLowerCase() === val.toLowerCase()),
+              );
+              if (matchedProduct) {
+                let targetIva = "08";
+                if (matchedProduct.tax_rate === 0) targetIva = "01";
+                else if (matchedProduct.tax_rate === 1) targetIva = "02";
+                else if (matchedProduct.tax_rate === 2) targetIva = "03";
+                else if (matchedProduct.tax_rate === 4) targetIva = "04";
+                else if (matchedProduct.tax_rate === 13) targetIva = "08";
+
+                onChange({
+                  detail: matchedProduct.name,
+                  cabys: matchedProduct.cabys || "",
+                  unitPrice: matchedProduct.price,
+                  code: matchedProduct.sku,
+                  unit: matchedProduct.unit || "Unid",
+                  ivaCode: targetIva,
+                });
+              } else {
+                onChange({ detail: val });
+              }
+            }}
+            list="product-suggestions"
+            placeholder="Descripción del bien o servicio *"
+            className="h-10 flex-1 min-w-0 rounded-lg border border-border bg-background px-3 text-xs font-semibold"
+          />
+          <button
+            type="button"
+            onClick={onRemove}
+            className="grid h-10 w-10 shrink-0 place-items-center rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive border border-border/60"
+            title="Eliminar ítem"
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+        </div>
+
+        {/* CABYS en móvil */}
+        <div className="relative flex items-center">
+          <input
+            value={line.cabys}
+            onChange={(e) => handleCabysInput(e.target.value)}
+            maxLength={13}
+            list="cabys-list"
+            placeholder="CABYS (13 dígitos) *"
+            className="h-9 w-full rounded-lg border border-border bg-background pl-2.5 pr-8 font-mono text-xs focus:ring-2 focus:ring-primary/20"
+          />
+          <button
+            type="button"
+            onClick={onOpenCabys}
+            className="absolute right-1 p-1.5 text-primary hover:bg-primary/10 rounded-md transition-colors"
+            title="Buscar en Catálogo CABYS"
+          >
+            {isSearchingCabys ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
+            ) : (
+              <Sparkles className="h-3.5 w-3.5" />
+            )}
+          </button>
+        </div>
+
+        {/* Cantidad, Precio y Total en 3 columnas ordenadas */}
+        <div className="grid grid-cols-3 gap-2 items-center pt-1">
+          <div>
+            <label className="block text-[10px] font-bold text-muted-foreground uppercase mb-0.5">
+              Cantidad
+            </label>
+            <input
+              type="number"
+              min={0}
+              step="0.01"
+              value={line.qty}
+              onChange={(e) => onChange({ qty: +e.target.value })}
+              className="h-9 w-full rounded-lg border border-border bg-background px-2.5 text-xs font-semibold tabular-nums"
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] font-bold text-muted-foreground uppercase mb-0.5">
+              Precio Unit.
+            </label>
+            <input
+              type="number"
+              min={0}
+              step="0.01"
+              value={line.unitPrice}
+              onChange={(e) => onChange({ unitPrice: +e.target.value })}
+              className="h-9 w-full rounded-lg border border-border bg-background px-2.5 text-xs font-semibold tabular-nums"
+            />
+          </div>
+          <div className="text-right">
+            <label className="block text-[10px] font-bold text-muted-foreground uppercase mb-0.5">
+              Total Línea
+            </label>
+            <div className="h-9 flex items-center justify-end font-bold text-xs text-primary tabular-nums">
+              {formatCRC(line.total)}
+            </div>
+          </div>
+        </div>
+
+        {/* Botón para expandir detalles adicionales (descuento, exoneración) */}
+        <div className="flex items-center justify-between pt-1 border-t border-border/50 text-[11px]">
+          <span className="text-muted-foreground">
+            IVA: <strong className="text-foreground">{line.ivaCode === "08" ? "13%" : line.ivaCode === "04" ? "4%" : line.ivaCode === "02" ? "1%" : line.ivaCode === "01" ? "0%" : line.ivaCode}</strong>
+          </span>
+          <button
+            type="button"
+            onClick={() => setOpen((o) => !o)}
+            className="inline-flex items-center gap-1 font-semibold text-primary hover:underline cursor-pointer"
+          >
+            <span>{open ? "Menos opciones" : "+ Descuento / Exoneración"}</span>
+            <ChevronDown className={"h-3 w-3 transition-transform " + (open ? "rotate-180" : "")} />
           </button>
         </div>
       </div>

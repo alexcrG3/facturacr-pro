@@ -171,6 +171,8 @@ export type Product = {
   stock: number;
   minStock: number;
   tax: number;
+  unit?: string;
+  description?: string;
 };
 
 export const products: Product[] = [

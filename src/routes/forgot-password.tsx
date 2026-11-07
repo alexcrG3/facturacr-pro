@@ -41,8 +41,8 @@ function ForgotPage() {
   };
 
   return (
-    <div className="grid min-h-screen place-items-center bg-muted/30 px-6">
-      <div className="w-full max-w-md rounded-2xl border border-border bg-card p-8 shadow-elevated">
+    <div className="grid min-h-screen w-full max-w-full overflow-x-hidden place-items-center bg-muted/30 px-4 py-8">
+      <div className="w-full max-w-md rounded-2xl border border-border bg-card p-5 sm:p-8 shadow-elevated">
         <Logo />
         <h1 className="mt-6 text-2xl font-semibold tracking-tight text-foreground">Recuperar contraseña</h1>
         <p className="mt-1 text-xs text-muted-foreground">

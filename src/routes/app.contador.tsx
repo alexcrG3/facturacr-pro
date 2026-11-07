@@ -334,68 +334,68 @@ Emitido por su Contador mediante DeclaraHub FacturaCR Pro.`;
   };
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6 pb-12">
+    <div className="mx-auto max-w-7xl space-y-6 pb-12 w-full min-w-0 overflow-x-clip">
       {/* Header con Barra de Herramientas Contables Completa */}
       <PageHeader
         title="Portal del Contador — Supervisión & Auditoría D-104"
         description={`Panel oficial del contador para auditar las actividades comerciales, el estado de aceptación CCE y la liquidación del D-104 de ${activeEstablishment?.name || "tu empresa"}.`}
         actions={
-          <div className="flex flex-wrap items-center gap-2.5">
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
             {/* Toolbar Contable Ejecutivo */}
-            <div className="inline-flex items-center rounded-xl border border-border bg-card shadow-xs overflow-hidden">
+            <div className="inline-flex flex-wrap items-center rounded-xl border border-border bg-card shadow-xs overflow-hidden">
               <button
                 type="button"
                 onClick={() => setAsientosModalOpen(true)}
-                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted transition-colors cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted transition-colors cursor-pointer whitespace-nowrap"
                 title="Exportar asientos de partida doble (Debe/Haber) para el ERP contable"
               >
                 <Scale className="h-3.5 w-3.5 text-indigo-500" /> Asientos
               </button>
-              <div className="h-4 w-px bg-border" />
+              <div className="h-4 w-px bg-border hidden sm:block" />
               <button
                 type="button"
                 onClick={() => setD151ModalOpen(true)}
-                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted transition-colors cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted transition-colors cursor-pointer whitespace-nowrap"
                 title="Borrador Informativo Anual D-151 (> ¢2.5M)"
               >
                 <FileSpreadsheet className="h-3.5 w-3.5 text-purple-500" /> D-151
               </button>
-              <div className="h-4 w-px bg-border" />
+              <div className="h-4 w-px bg-border hidden sm:block" />
               <button
                 type="button"
                 onClick={() => setAceptadorModalOpen(true)}
-                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted transition-colors cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted transition-colors cursor-pointer whitespace-nowrap"
                 title="Aceptar gastos y compras ante Hacienda (CCE)"
               >
                 <ShieldCheck className="h-3.5 w-3.5 text-emerald-500" /> Aceptar Gastos
               </button>
-              <div className="h-4 w-px bg-border" />
+              <div className="h-4 w-px bg-border hidden sm:block" />
               <button
                 type="button"
                 onClick={() => {
                   setImportModalMode("expediente");
                   setImportModalOpen(true);
                 }}
-                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted transition-colors cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted transition-colors cursor-pointer whitespace-nowrap"
                 title="Importar o reconstruir comprobantes desde archivos XML"
               >
                 <FolderArchive className="h-3.5 w-3.5 text-amber-500" /> Importar XML
               </button>
-              <div className="h-4 w-px bg-border" />
+              <div className="h-4 w-px bg-border hidden sm:block" />
               <button
                 type="button"
                 onClick={handleCopiarMensaje}
-                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted transition-colors cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted transition-colors cursor-pointer whitespace-nowrap"
                 title="Copiar resumen del cierre para WhatsApp del cliente"
               >
                 {copied ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Send className="h-3.5 w-3.5 text-blue-500" />}
                 WhatsApp
               </button>
-              <div className="h-4 w-px bg-border" />
+              <div className="h-4 w-px bg-border hidden sm:block" />
               <button
                 type="button"
                 onClick={() => setInvitarModalOpen(true)}
-                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted transition-colors cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted transition-colors cursor-pointer whitespace-nowrap"
                 title="Asignar auditor o contador"
               >
                 <UserPlus className="h-3.5 w-3.5 text-primary" /> Asignar Auditor
@@ -633,7 +633,68 @@ Emitido por su Contador mediante DeclaraHub FacturaCR Pro.`;
           </div>
         </div>
 
-        <div className="overflow-x-auto">
+        {/* ─── VISTA MÓVIL (CARDS) ─── */}
+        <div className="md:hidden divide-y divide-border">
+          {cargando ? (
+            <div className="p-8 text-center text-xs text-muted-foreground">
+              Cargando actividades económicas de la empresa...
+            </div>
+          ) : !metricasEmpresa || metricasEmpresa.actividades.length === 0 ? (
+            <div className="p-8 text-center text-xs text-muted-foreground">
+              No hay comprobantes emitidos en el período fiscal seleccionado.
+            </div>
+          ) : (
+            metricasEmpresa.actividades.map((act) => (
+              <div key={act.codigoActividad} className="p-3.5 space-y-2.5">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5 font-mono text-xs">
+                      <span className="font-bold text-primary rounded bg-primary/10 px-1.5 py-0.2">
+                        {act.codigoActividad}
+                      </span>
+                      {act.esPrincipal && (
+                        <span className="rounded-full bg-blue-500/10 px-2 py-0.2 text-[9px] font-black uppercase text-blue-600">
+                          Principal
+                        </span>
+                      )}
+                    </div>
+                    <p className="font-semibold text-xs text-foreground mt-0.5">
+                      {act.nombreActividad}
+                    </p>
+                  </div>
+
+                  <span className="rounded bg-emerald-500/10 px-2 py-0.5 text-[11px] font-mono font-bold text-emerald-600 shrink-0">
+                    Prorrata: {act.factorProrrata.toFixed(1)}%
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2 pt-1 border-t border-border/50 text-xs">
+                  <div>
+                    <span className="text-[10px] text-muted-foreground block font-bold uppercase">Ventas</span>
+                    <span className="font-mono font-bold text-foreground tabular-nums">
+                      {formatCRC(act.totalVentas)}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-muted-foreground block font-bold uppercase">Débito IVA</span>
+                    <span className="font-mono font-bold text-emerald-600 tabular-nums">
+                      +{formatCRC(act.totalIvaVentas)}
+                    </span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-[10px] text-muted-foreground block font-bold uppercase">Compras</span>
+                    <span className="font-mono font-bold text-foreground tabular-nums">
+                      {formatCRC(act.totalCompras)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* ─── VISTA DESKTOP (TABLA) ─── */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead className="bg-muted/40 text-[11px] text-muted-foreground border-b border-border font-semibold">
               <tr>

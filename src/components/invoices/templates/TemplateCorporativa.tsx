@@ -148,8 +148,8 @@ export function TemplateCorporativa({
       </div>
 
       {/* ─── TABLA DE DETALLE ─── */}
-      <div className="overflow-hidden rounded-xl border border-slate-200">
-        <table className="w-full text-left text-xs">
+      <div className="overflow-x-auto rounded-xl border border-slate-200">
+        <table className="w-full text-left text-xs min-w-[500px]">
           <thead className="bg-slate-800 text-white font-bold text-[11px]">
             <tr>
               <th className="p-2.5">CÓDIGO / CABYS</th>

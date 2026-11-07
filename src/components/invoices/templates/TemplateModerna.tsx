@@ -144,8 +144,8 @@ export function TemplateModerna({
       </div>
 
       {/* ─── TABLA DE LÍNEAS / PRODUCTOS ─── */}
-      <div className="overflow-hidden rounded-xl border border-slate-200">
-        <table className="w-full text-left text-xs">
+      <div className="overflow-x-auto rounded-xl border border-slate-200">
+        <table className="w-full text-left text-xs min-w-[500px]">
           <thead>
             <tr className="bg-slate-900 text-white font-bold text-[10px] uppercase tracking-wider">
               <th className="py-2.5 px-3 w-10 text-center">#</th>

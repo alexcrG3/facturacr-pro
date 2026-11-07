@@ -697,27 +697,27 @@ export function TesoreriaPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 w-full min-w-0 overflow-x-clip">
       {/* Header de la Página */}
       <PageHeader
         title="Tesorería — Cobros y Pagos (CxC / CxP)"
         description="Gestión integral de créditos, vencimientos semana a semana, pagos a proveedores y flujo de caja."
         actions={
-          <div className="flex flex-wrap items-center gap-2.5">
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
             <button
               type="button"
               onClick={() => setIsNewPayableModalOpen(true)}
-              className="inline-flex items-center gap-2 rounded-xl border border-border bg-background px-4 py-2 text-xs font-bold text-foreground hover:bg-muted transition-all shadow-2xs cursor-pointer"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-background px-3.5 py-2 text-xs font-bold text-foreground hover:bg-muted transition-all shadow-2xs cursor-pointer whitespace-nowrap"
             >
-              <Plus className="h-4 w-4 text-primary" />
-              <span>+ Nuevo Gasto / CxP</span>
+              <Plus className="h-4 w-4 text-primary shrink-0" />
+              <span>Nuevo Gasto / CxP</span>
             </button>
             <a
               href="/app/invoices/new"
-              className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-xs font-bold text-primary-foreground shadow-sm hover:bg-primary/90 transition-all cursor-pointer"
+              className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-3.5 py-2 text-xs font-bold text-primary-foreground shadow-sm hover:bg-primary/90 transition-all cursor-pointer whitespace-nowrap"
             >
-              <Plus className="h-4 w-4" />
-              <span>+ Emitir a Crédito</span>
+              <Plus className="h-4 w-4 shrink-0" />
+              <span>Emitir a Crédito</span>
             </a>
           </div>
         }
@@ -1007,7 +1007,101 @@ export function TesoreriaPage() {
 
           {/* Tabla de CxC */}
           <div className="rounded-xl border border-border bg-card shadow-soft overflow-hidden">
-            <div className="overflow-x-auto">
+            {/* ─── VISTA MÓVIL CxC (CARDS) ─── */}
+            <div className="md:hidden divide-y divide-border">
+              {filteredReceivables.length === 0 ? (
+                <div className="px-4 py-12 text-center text-muted-foreground">
+                  <WalletCards className="h-8 w-8 mx-auto text-muted-foreground/40 mb-2" />
+                  <p className="font-semibold text-foreground text-sm">No se encontraron cuentas por cobrar</p>
+                  <p className="text-xs">No hay comprobantes que coincidan con el filtro.</p>
+                </div>
+              ) : (
+                filteredReceivables.map((item) => {
+                  const totalPaid = item.payments.reduce((s, p) => s + p.amount, 0);
+                  const balance = Math.max(0, item.total_amount - totalPaid);
+                  const isFullyPaid = balance <= 0;
+                  const diff = getDaysDiff(item.due_date);
+                  const isOverdue = diff < 0 && !isFullyPaid;
+                  const isThisWeek = diff >= 0 && diff <= 7 && !isFullyPaid;
+
+                  return (
+                    <div key={item.id} className="p-3.5 space-y-2.5">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <p className="font-bold text-xs text-foreground truncate">{item.client_name}</p>
+                          <div className="flex items-center gap-1.5 font-mono text-[11px] text-muted-foreground mt-0.5">
+                            <span className="rounded bg-primary/10 text-primary px-1.5 py-0.2 font-bold">
+                              {item.doc_type}
+                            </span>
+                            <span className="truncate">{item.consecutive_number}</span>
+                          </div>
+                        </div>
+
+                        <div>
+                          {isFullyPaid ? (
+                            <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-600">
+                              Pagada
+                            </span>
+                          ) : isOverdue ? (
+                            <span className="rounded-full bg-destructive/10 px-2 py-0.5 text-[10px] font-bold text-destructive">
+                              Vencida
+                            </span>
+                          ) : isThisWeek ? (
+                            <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-bold text-amber-700">
+                              Esta semana
+                            </span>
+                          ) : (
+                            <span className="rounded-full bg-blue-500/10 px-2 py-0.5 text-[10px] font-bold text-blue-600">
+                              Al día
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between text-xs pt-1">
+                        <div className="text-[11px] text-muted-foreground">
+                          <span>Vence: <strong className="text-foreground font-mono">{item.due_date}</strong></span>
+                          <span className="block text-[10px] text-muted-foreground">{item.credit_term_days} días de plazo</span>
+                        </div>
+
+                        <div className="text-right">
+                          <span className="font-mono font-black text-sm text-foreground block tabular-nums">
+                            ₡{balance.toLocaleString()}
+                          </span>
+                          {totalPaid > 0 && !isFullyPaid && (
+                            <span className="text-[10px] text-emerald-600 font-mono">
+                              Abonado: ₡{totalPaid.toLocaleString()}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-end gap-1.5 pt-2 border-t border-border/50">
+                        {!isFullyPaid && (
+                          <button
+                            type="button"
+                            onClick={() => handleOpenWhatsApp(item)}
+                            className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1.5 text-xs font-semibold shadow-xs"
+                          >
+                            <MessageCircle className="h-3.5 w-3.5" /> WhatsApp
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleOpenPaymentModal(item, "cxc")}
+                          className="inline-flex items-center gap-1 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary px-2.5 py-1.5 text-xs font-semibold"
+                        >
+                          <CreditCard className="h-3.5 w-3.5" /> {isFullyPaid ? "Ver Pagos" : "Abonar"}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* ─── VISTA DESKTOP CxC (TABLA) ─── */}
+            <div className="hidden md:block overflow-x-auto">
               <table className="w-full text-xs text-left">
                 <thead className="border-b border-border bg-muted/40 font-semibold text-muted-foreground uppercase text-[11px] tracking-wider">
                   <tr>
@@ -1187,7 +1281,92 @@ export function TesoreriaPage() {
 
           {/* Tabla de CxP */}
           <div className="rounded-xl border border-border bg-card shadow-soft overflow-hidden">
-            <div className="overflow-x-auto">
+            {/* ─── VISTA MÓVIL CxP (CARDS) ─── */}
+            <div className="md:hidden divide-y divide-border">
+              {filteredPayables.length === 0 ? (
+                <div className="px-4 py-12 text-center text-muted-foreground">
+                  <Building2 className="h-8 w-8 mx-auto text-muted-foreground/40 mb-2" />
+                  <p className="font-semibold text-foreground text-sm">No se encontraron cuentas por pagar</p>
+                  <p className="text-xs">No hay obligaciones en este rango.</p>
+                </div>
+              ) : (
+                filteredPayables.map((item) => {
+                  const totalPaid = item.payments.reduce((s, p) => s + p.amount, 0);
+                  const balance = Math.max(0, item.total_amount - totalPaid);
+                  const isFullyPaid = balance <= 0;
+                  const diff = getDaysDiff(item.due_date);
+                  const isOverdue = diff < 0 && !isFullyPaid;
+                  const isThisWeek = diff >= 0 && diff <= 7 && !isFullyPaid;
+
+                  return (
+                    <div key={item.id} className="p-3.5 space-y-2.5">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <p className="font-bold text-xs text-foreground truncate">{item.supplier_name}</p>
+                          <div className="flex items-center gap-1.5 font-mono text-[11px] text-muted-foreground mt-0.5">
+                            <span className="rounded bg-muted px-1.5 py-0.2 font-semibold text-foreground">
+                              {item.invoice_number}
+                            </span>
+                            <span className="truncate">{item.category}</span>
+                          </div>
+                        </div>
+
+                        <div>
+                          {isFullyPaid ? (
+                            <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-600">
+                              Pagada
+                            </span>
+                          ) : isOverdue ? (
+                            <span className="rounded-full bg-destructive/10 px-2 py-0.5 text-[10px] font-bold text-destructive">
+                              Vencida
+                            </span>
+                          ) : isThisWeek ? (
+                            <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-bold text-amber-700">
+                              Esta semana
+                            </span>
+                          ) : (
+                            <span className="rounded-full bg-blue-500/10 px-2 py-0.5 text-[10px] font-bold text-blue-600">
+                              Al día
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between text-xs pt-1">
+                        <div className="text-[11px] text-muted-foreground">
+                          <span>Vence: <strong className="text-foreground font-mono">{item.due_date}</strong></span>
+                          <span className="block text-[10px] text-muted-foreground">{item.credit_term_days} días de plazo</span>
+                        </div>
+
+                        <div className="text-right">
+                          <span className="font-mono font-black text-sm text-foreground block tabular-nums">
+                            ₡{balance.toLocaleString()}
+                          </span>
+                          {totalPaid > 0 && !isFullyPaid && (
+                            <span className="text-[10px] text-emerald-600 font-mono">
+                              Pagado: ₡{totalPaid.toLocaleString()}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-end gap-1.5 pt-2 border-t border-border/50">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenPaymentModal(item, "cxp")}
+                          className="inline-flex items-center gap-1 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground shadow-xs hover:bg-primary/90"
+                        >
+                          <CreditCard className="h-3.5 w-3.5" /> {isFullyPaid ? "Ver Historial" : "Registrar Pago"}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* ─── VISTA DESKTOP CxP (TABLA) ─── */}
+            <div className="hidden md:block overflow-x-auto">
               <table className="w-full text-xs text-left">
                 <thead className="border-b border-border bg-muted/40 font-semibold text-muted-foreground uppercase text-[11px] tracking-wider">
                   <tr>

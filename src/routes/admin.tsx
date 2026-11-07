@@ -87,6 +87,7 @@ function CommandCenterStandalone() {
   const [editIsActive, setEditIsActive] = useState(true);
   const [editAtvEnv, setEditAtvEnv] = useState("staging");
   const [editApiKey, setEditApiKey] = useState("");
+  const [editAllowApiAccess, setEditAllowApiAccess] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
   const [copiedKey, setCopiedKey] = useState(false);
   const [regeneratingKey, setRegeneratingKey] = useState(false);
@@ -520,6 +521,10 @@ function CommandCenterStandalone() {
     setEditIsActive(est.is_active !== false);
     setEditAtvEnv(est.atv_environment || "staging");
     setEditApiKey(est.apiKey || "");
+    const savedApiAllowed = typeof window !== "undefined"
+      ? localStorage.getItem(`facturaos_api_allowed_${est.id}`) === "true"
+      : false;
+    setEditAllowApiAccess(savedApiAllowed || Boolean(est.allow_api_access));
     setCopiedKey(false);
     setShowEditModal(true);
   };
@@ -551,6 +556,11 @@ function CommandCenterStandalone() {
         .eq("id", editTargetEst.id);
 
       if (updateErr) throw updateErr;
+
+      // Guardar permiso de acceso a API para el cliente
+      if (typeof window !== "undefined") {
+        localStorage.setItem(`facturaos_api_allowed_${editTargetEst.id}`, String(editAllowApiAccess));
+      }
 
       // Actualizar nombre en api_keys si aplica
       await supabase
@@ -758,32 +768,53 @@ function CommandCenterStandalone() {
   };
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] text-slate-800 antialiased pb-16">
-      {/* ─── BARRA SUPERIOR / NAVBAR ────────────────────────────────────────── */}
-      <header className="sticky top-0 z-30 bg-white/90 backdrop-blur-md border-b border-slate-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="h-11 w-11 rounded-2xl bg-blue-600 text-white flex items-center justify-center shadow-md shadow-blue-600/20">
-              <ShieldCheck className="h-6 w-6" />
-            </div>
+    <div className="min-h-screen w-full max-w-full overflow-x-hidden bg-[#f8fafc] text-slate-800 antialiased pb-16">
+      {/* ─── BARRA SUPERIOR / NAVBAR RESPONSIVA ────────────────────────────── */}
+      <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200">
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-3 flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div className="flex items-center justify-between">
             <div className="flex items-center gap-2.5">
-              <span className="text-xl font-black tracking-tight text-slate-900 uppercase">
-                Centro de Mando
-              </span>
-              <span className="rounded-full bg-blue-50 text-blue-700 border border-blue-200/80 px-2.5 py-0.5 text-xs font-semibold">
-                SaaS Multi-Empresa
-              </span>
+              <div className="h-10 w-10 sm:h-11 sm:w-11 rounded-xl sm:rounded-2xl bg-blue-600 text-white flex items-center justify-center shadow-md shadow-blue-600/20 shrink-0">
+                <ShieldCheck className="h-5 w-5 sm:h-6 sm:w-6" />
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-base sm:text-xl font-black tracking-tight text-slate-900 uppercase">
+                  Centro de Mando
+                </span>
+                <span className="rounded-full bg-blue-50 text-blue-700 border border-blue-200/80 px-2 py-0.5 text-[10px] sm:text-xs font-semibold">
+                  Multi-Empresa
+                </span>
+              </div>
             </div>
+
+            {/* Acceso a facturación en móvil */}
+            <button
+              onClick={() => navigate({ to: "/app/dashboard" })}
+              className="inline-flex md:hidden items-center gap-1 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 px-2.5 py-1.5 text-xs font-bold transition-all shadow-xs cursor-pointer"
+              title="Volver a la App de Facturación"
+            >
+              <span>Ir a Facturas</span>
+              <ArrowRight className="h-3.5 w-3.5" />
+            </button>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+            <button
+              onClick={() => navigate({ to: "/app/dashboard" })}
+              className="hidden md:inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 px-3 py-2 text-xs font-bold transition-all shadow-xs cursor-pointer"
+              title="Volver al panel de facturación"
+            >
+              <span>Ir a Facturas</span>
+              <ArrowRight className="h-3.5 w-3.5" />
+            </button>
+
             <button
               onClick={loadData}
               disabled={loading}
-              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 px-4 py-2.5 text-sm font-semibold transition-all shadow-xs"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 px-2.5 sm:px-4 py-2 sm:py-2.5 text-xs sm:text-sm font-semibold transition-all shadow-xs cursor-pointer"
             >
-              <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin text-blue-600" : ""}`} />
-              <span>Actualizar</span>
+              <RefreshCw className={`h-3.5 w-3.5 sm:h-4 sm:w-4 ${loading ? "animate-spin text-blue-600" : ""}`} />
+              <span className="hidden sm:inline">Actualizar</span>
             </button>
 
             <button
@@ -791,11 +822,12 @@ function CommandCenterStandalone() {
                 loadAdminUsers();
                 setShowAssignModal(true);
               }}
-              className="inline-flex items-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-4 py-2.5 text-sm font-semibold transition-all shadow-xs cursor-pointer"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-2.5 sm:px-4 py-2 sm:py-2.5 text-xs sm:text-sm font-semibold transition-all shadow-xs cursor-pointer"
               title="Vincular múltiples sociedades a un cliente o contador"
             >
-              <Users className="h-4 w-4" />
-              <span>Asignar Sociedades a Cliente</span>
+              <Users className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+              <span className="hidden md:inline">Asignar Sociedades</span>
+              <span className="md:hidden">Asignar</span>
             </button>
 
             <button
@@ -807,26 +839,27 @@ function CommandCenterStandalone() {
                   toast.error("No hay empresas registradas para simular.");
                 }
               }}
-              className="inline-flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-900 px-4 py-2.5 text-sm font-bold transition-all shadow-xs cursor-pointer hover:border-amber-400"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-900 px-2.5 sm:px-4 py-2 sm:py-2.5 text-xs sm:text-sm font-bold transition-all shadow-xs cursor-pointer hover:border-amber-400"
               title="Simular la vista y permisos de un usuario en cualquier empresa"
             >
-              <span>🎭 Simular Usuario</span>
+              <span>🎭</span>
+              <span className="hidden sm:inline">Simular</span>
             </button>
 
             <button
               onClick={() => setShowModal(true)}
-              className="inline-flex items-center gap-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 text-sm font-semibold shadow-md shadow-blue-600/25 transition-all cursor-pointer"
+              className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white px-3 sm:px-5 py-2 sm:py-2.5 text-xs sm:text-sm font-semibold shadow-md shadow-blue-600/25 transition-all cursor-pointer"
             >
-              <Plus className="h-4 w-4" />
-              <span>+ Nueva Empresa</span>
+              <Plus className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+              <span>+ Empresa</span>
             </button>
 
             <button
               onClick={logout}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white hover:bg-rose-50 hover:border-rose-200 hover:text-rose-600 text-slate-600 px-3.5 py-2.5 text-sm font-medium transition-all shadow-xs"
+              className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white hover:bg-rose-50 hover:border-rose-200 hover:text-rose-600 text-slate-600 px-2.5 sm:px-3.5 py-2 sm:py-2.5 text-xs sm:text-sm font-medium transition-all shadow-xs cursor-pointer"
               title="Cerrar sesión"
             >
-              <LogOut className="h-4 w-4" />
+              <LogOut className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
               <span className="hidden sm:inline">Salir</span>
             </button>
           </div>
@@ -834,7 +867,7 @@ function CommandCenterStandalone() {
       </header>
 
       {/* ─── CONTENIDO PRINCIPAL ────────────────────────────────────────────── */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 space-y-8">
+      <main className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 pt-6 sm:pt-8 space-y-6 sm:space-y-8">
         {/* ─── TARJETAS KPI (ESTILO IMAGEN DE REFERENCIA) ──────────────────────── */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
           {/* Card 1 */}
@@ -1504,6 +1537,27 @@ function CommandCenterStandalone() {
                 <p className="text-[10px] text-slate-400">
                   Usa esta clave en el header <code>Authorization: Bearer fct_live_...</code> de la app externa.
                 </p>
+
+                {/* Toggle para permitir al cliente ver la pestaña API en su propio panel */}
+                <div className="pt-2.5 border-t border-slate-200/80 flex items-center justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <span className="text-xs font-bold text-slate-800 block">
+                      Habilitar acceso API para el cliente
+                    </span>
+                    <span className="text-[10px] text-slate-500 block leading-tight">
+                      Desactivado por defecto. Si lo activas, el cliente verá la pestaña técnica de API y su clave en Configuración.
+                    </span>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                    <input
+                      type="checkbox"
+                      checked={editAllowApiAccess}
+                      onChange={(e) => setEditAllowApiAccess(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+                  </label>
+                </div>
               </div>
 
               <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">

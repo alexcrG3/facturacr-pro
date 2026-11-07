@@ -59,7 +59,7 @@ export function PwaInstallPrompt() {
   }
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 flex max-w-sm items-center gap-3 rounded-xl border border-primary/20 bg-card/95 p-3.5 shadow-2xl backdrop-blur-md animate-in fade-in slide-in-from-bottom-5">
+    <div className="fixed bottom-20 sm:bottom-4 left-3 right-3 sm:left-auto sm:right-4 z-50 flex max-w-sm items-center gap-3 rounded-xl border border-primary/20 bg-card/95 p-3.5 shadow-2xl backdrop-blur-md animate-in fade-in slide-in-from-bottom-5 mx-auto">
       <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
         <Smartphone className="h-5 w-5" />
       </div>

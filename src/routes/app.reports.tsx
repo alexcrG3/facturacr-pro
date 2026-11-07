@@ -229,49 +229,49 @@ function ReportsPage() {
   };
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6 pb-12">
+    <div className="mx-auto max-w-7xl space-y-6 pb-12 w-full min-w-0 overflow-x-clip">
       {/* Header */}
       <PageHeader
         title="DeclaraHub — Contabilidad y D-104"
         description="Portal oficial de conciliación contable, borrador de declaración mensual D-104 de Hacienda CR y reportes en Excel."
         actions={
-          <div className="flex flex-wrap items-center gap-2.5">
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
             {/* Toolbar elegante con divisiones y estilo SaaS profesional */}
-            <div className="inline-flex items-center rounded-xl border border-border bg-card shadow-xs overflow-hidden">
+            <div className="inline-flex flex-wrap items-center rounded-xl border border-border bg-card shadow-xs overflow-hidden">
               <button
                 type="button"
                 onClick={() => setAsientosModalOpen(true)}
-                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted transition-colors cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted transition-colors cursor-pointer whitespace-nowrap"
                 title="Generar asientos de partida doble (Debe/Haber)"
               >
                 <Scale className="h-3.5 w-3.5 text-indigo-500" /> Asientos
               </button>
-              <div className="h-4 w-px bg-border" />
+              <div className="h-4 w-px bg-border hidden sm:block" />
               <button
                 type="button"
                 onClick={() => setD151ModalOpen(true)}
-                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted transition-colors cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted transition-colors cursor-pointer whitespace-nowrap"
                 title="Declaración Informativa Anual D-151 (> ¢2.5M)"
               >
                 <FileSpreadsheet className="h-3.5 w-3.5 text-purple-500" /> D-151
               </button>
-              <div className="h-4 w-px bg-border" />
+              <div className="h-4 w-px bg-border hidden sm:block" />
               <button
                 type="button"
                 onClick={() => setAceptadorModalOpen(true)}
-                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted transition-colors cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted transition-colors cursor-pointer whitespace-nowrap"
                 title="Aceptar gastos de compras ante Hacienda (CCE)"
               >
                 <ShieldCheck className="h-3.5 w-3.5 text-emerald-500" /> Aceptar Gastos
               </button>
-              <div className="h-4 w-px bg-border" />
+              <div className="h-4 w-px bg-border hidden sm:block" />
               <button
                 type="button"
                 onClick={() => {
                   setImportModalMode("expediente");
                   setImportModalOpen(true);
                 }}
-                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted transition-colors cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted transition-colors cursor-pointer whitespace-nowrap"
                 title="Cargar o reconstruir comprobantes desde archivos XML"
               >
                 <FolderArchive className="h-3.5 w-3.5 text-amber-500" /> Importar XML
@@ -282,7 +282,7 @@ function ReportsPage() {
             <button
               type="button"
               onClick={handleDescargarExcel}
-              className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-xs font-bold text-primary-foreground shadow-sm hover:bg-primary/90 transition-all cursor-pointer"
+              className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-xs font-bold text-primary-foreground shadow-sm hover:bg-primary/90 transition-all cursor-pointer whitespace-nowrap"
             >
               <FileSpreadsheet className="h-4 w-4" /> Generar Excel D-104
             </button>
@@ -292,18 +292,18 @@ function ReportsPage() {
 
       {/* Tabs Selector: DeclaraHub vs Libro de Comprobantes */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-3">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar max-w-full pb-1">
           <button
             type="button"
             onClick={() => setVistaActiva("declarahub")}
-            className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+            className={`inline-flex shrink-0 items-center gap-2 px-3 sm:px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
               vistaActiva === "declarahub"
                 ? "bg-primary text-primary-foreground shadow-soft"
                 : "bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground"
             }`}
           >
-            <Sparkles className="h-4 w-4" />
-            DeclaraHub (Borrador D-104)
+            <Sparkles className="h-4 w-4 shrink-0" />
+            DeclaraHub (D-104)
             <span className="rounded-full bg-emerald-500/20 text-emerald-400 px-2 py-0.5 text-[10px] font-extrabold uppercase">
               Hacienda CR
             </span>
@@ -312,14 +312,14 @@ function ReportsPage() {
           <button
             type="button"
             onClick={() => setVistaActiva("libro")}
-            className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+            className={`inline-flex shrink-0 items-center gap-2 px-3 sm:px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
               vistaActiva === "libro"
                 ? "bg-primary text-primary-foreground shadow-soft"
                 : "bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground"
             }`}
           >
-            <FileSpreadsheet className="h-4 w-4" />
-            Libro de Comprobantes & Excel
+            <FileSpreadsheet className="h-4 w-4 shrink-0" />
+            Libro Comprobantes & Excel
             <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-foreground">
               {filtrados.length}
             </span>
@@ -327,26 +327,26 @@ function ReportsPage() {
         </div>
 
         {/* Período Rápido Compacto */}
-        <div className="flex items-center gap-1.5 text-xs">
-          <span className="text-muted-foreground font-medium mr-1 text-[11px]">Período:</span>
+        <div className="flex items-center gap-1.5 text-xs overflow-x-auto no-scrollbar max-w-full py-1">
+          <span className="text-muted-foreground font-medium mr-1 text-[11px] shrink-0">Período:</span>
           <button
             type="button"
             onClick={() => setPeriodoRapido("este_mes")}
-            className="rounded-lg border border-border bg-card px-2.5 py-1 text-[11px] font-medium hover:bg-muted"
+            className="rounded-lg border border-border bg-card px-2.5 py-1 text-[11px] font-medium hover:bg-muted shrink-0 whitespace-nowrap"
           >
             Este mes
           </button>
           <button
             type="button"
             onClick={() => setPeriodoRapido("mes_anterior")}
-            className="rounded-lg border border-border bg-card px-2.5 py-1 text-[11px] font-medium hover:bg-muted"
+            className="rounded-lg border border-border bg-card px-2.5 py-1 text-[11px] font-medium hover:bg-muted shrink-0 whitespace-nowrap"
           >
             Mes anterior
           </button>
           <button
             type="button"
             onClick={() => setPeriodoRapido("este_ano")}
-            className="rounded-lg border border-border bg-card px-2.5 py-1 text-[11px] font-medium hover:bg-muted"
+            className="rounded-lg border border-border bg-card px-2.5 py-1 text-[11px] font-medium hover:bg-muted shrink-0 whitespace-nowrap"
           >
             Este año
           </button>
@@ -403,7 +403,7 @@ function ReportsPage() {
                 <select
                   value={tipoReporte}
                   onChange={(e) => setTipoReporte(e.target.value as TipoReporteId)}
-                  className="h-10 w-full rounded-xl border border-border bg-background px-3 text-xs font-semibold text-foreground focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/20"
+                  className="h-10 w-full min-w-0 max-w-full rounded-xl border border-border bg-background px-3 text-xs font-semibold text-foreground truncate focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/20"
                 >
                   {TIPOS_REPORTE.map((r) => (
                     <option key={r.id} value={r.id}>
@@ -540,8 +540,74 @@ function ReportsPage() {
           </div>
         </div>
 
-        {/* Tabla */}
-        <div className="overflow-x-auto">
+        {/* ─── VISTA MÓVIL (CARDS) ─── */}
+        <div className="md:hidden divide-y divide-border font-sans">
+          {filtrados.length === 0 ? (
+            <div className="p-8 text-center text-xs text-muted-foreground">
+              No se encontraron comprobantes en el rango de fechas seleccionado.
+            </div>
+          ) : (
+            filtrados.map((item) => (
+              <div key={item.id} className="p-3.5 space-y-2 text-xs">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 font-mono text-[11px]">
+                    <span
+                      className={`rounded px-1.5 py-0.5 font-bold ${
+                        item.tipoOperacion === "VENTA"
+                          ? "bg-primary/10 text-primary"
+                          : "bg-amber-500/10 text-amber-700 dark:text-amber-400"
+                      }`}
+                    >
+                      {item.tipoOperacion}
+                    </span>
+                    <span className="rounded bg-muted px-1.5 py-0.5 text-foreground font-semibold">
+                      {item.tipoDoc}
+                    </span>
+                  </div>
+
+                  <span
+                    className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${
+                      item.estadoHacienda === "ACEPTADO"
+                        ? "bg-emerald-500/10 text-emerald-600"
+                        : item.estadoHacienda === "RECHAZADO"
+                          ? "bg-destructive/10 text-destructive"
+                          : "bg-muted text-muted-foreground"
+                    }`}
+                  >
+                    {item.estadoHacienda}
+                  </span>
+                </div>
+
+                <div className="flex items-end justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-semibold text-foreground truncate">
+                      {item.tipoOperacion === "VENTA" ? item.receptorNombre : item.emisorNombre}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground font-mono truncate">
+                      Cédula: {item.tipoOperacion === "VENTA" ? item.receptorCedula : item.emisorCedula} • {item.fechaEmision}
+                    </p>
+                  </div>
+
+                  <div className="text-right shrink-0">
+                    <span className="font-mono font-bold text-xs text-foreground block tabular-nums">
+                      {item.moneda} {item.totalComprobante?.toLocaleString("es-CR")}
+                    </span>
+                    <span className="text-[11px] text-emerald-600 font-mono font-semibold">
+                      IVA: {item.moneda} {item.totalIva?.toLocaleString("es-CR")}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="text-[10px] text-muted-foreground font-mono truncate pt-1 border-t border-border/40">
+                  Clave: {item.clave}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* ─── VISTA DESKTOP (TABLA) ─── */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead className="bg-muted/50 font-semibold text-muted-foreground border-b border-border">
               <tr>

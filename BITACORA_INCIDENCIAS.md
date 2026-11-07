@@ -7,6 +7,61 @@
 
 ---
 
+### [2026-11-06 21:30] - Overhaul de Responsividad Móvil PWA, Barra Superior Fija, Selector de Plantillas y Control de Acceso a API para Inquilinos
+* **Módulos Afectados:**
+  - `src/styles.css`
+  - `src/components/layout/AppShell.tsx`
+  - `src/components/layout/AppTopbar.tsx`
+  - `src/components/layout/BottomNav.tsx`
+  - `src/components/common/PageHeader.tsx`
+  - `src/routes/app.invoices.new.tsx`
+  - `src/routes/app.clients.tsx`
+  - `src/routes/app.cajas.tsx`
+  - `src/routes/app.reports.tsx`
+  - `src/routes/app.settings.tsx`
+  - `src/routes/admin.tsx`
+  - `src/components/invoices/templates/InvoiceRenderer.tsx`
+  - `src/components/invoices/templates/TemplateCorporativa.tsx`
+  - `src/components/invoices/templates/TemplateModerna.tsx`
+  - `src/components/invoices/templates/TemplateClasica.tsx`
+  - `BITACORA_INCIDENCIAS.md`
+* **Incidencias Reportadas:**
+  1. **Responsividad en móvil deficiente:** Textos apilados verticalmente letra por letra en títulos, desbordamiento horizontal en formularios de factura, cajas, clientes y reportes.
+  2. **Barra Superior (Appbar) desaparecía al hacer scroll:** Al navegar en móvil, el encabezado superior no permanecía fijo y desaparecía al desplazarse hacia abajo.
+  3. **Texto de botón roto en Cajas:** En la tarjeta de caja, el botón de numeración mostraba `"Continuar numeración automática a partir \n de..."` partiéndose de forma antiestética.
+  4. **Referencia a software competidor ("GTI"):** En el selector de plantillas y en la vista previa del comprobante se mostraba el nombre `"Corporativa GTI"`.
+  5. **Modo Pruebas erróneo:** En `app.invoices.new.tsx`, empresas activas en producción (como SRL. 3102832920) mostraban el badge `"🟡 Modo Pruebas"` en lugar de `"🟢 Producción"`.
+  6. **Modal de Vista Previa de Factura cortado:** Al abrir la vista previa en Configuración desde un teléfono móvil, la mitad inferior quedaba cortada y solapada por la barra inferior sin permitir ver totales, cuentas ni botones de cierre.
+  7. **Exposición de API y credenciales a clientes finales:** La pestaña de "Conexión API" y la API Key estaban visibles para cualquier cliente o usuario inquilino (incluso en modo simulación de cliente), mostrando además la URL interna `http://localhost:3000`.
+* **Causa Raíz:**
+  1. `overflow-x: hidden` en `html, body` y wrappers principales rompía el comportamiento de `position: sticky` en navegadores móviles (Chrome/Safari) y generaba desbordamientos en elementos `<select>` y tablas nativas sin `max-width: 100%; min-width: 0;`.
+  2. Los títulos en `PageHeader` utilizaban `flex flex-wrap` sin colapsar ordenadamente en columna en anchos menores a 640px.
+  3. `app.invoices.new.tsx` leía una clave genérica antigua de `localStorage` con fallback hardcodeado a `"staging"` e ignoraba el campo `atv_environment` de la base de datos Supabase.
+  4. El modal de vista previa en `app.settings.tsx` utilizaba `max-h-[92vh]` centrado verticalmente sin layout flex interno de cabecera/cuerpo/pie, lo que empujaba el contenido fuera del viewport móvil.
+  5. La validación de visibilidad de la sección API evaluaba el correo del usuario raíz autenticado (`alex@mail.com`), lo que provocaba que al simular a un cliente (ej. Kevin Duran Rojas), este continuara viendo la pestaña técnica.
+* **Cómo se resolvió:**
+  1. **Corrección de Overflow y Barra Superior Fija (`styles.css` y `AppShell.tsx`):**
+     - Sustituido `overflow-x: hidden` por `overflow-x: clip;` para preservar el scroll nativo sin cancelar posiciones fijas.
+     - Barra superior configurada como `fixed md:sticky top-0 left-0 right-0 z-40` con compensación de espaciado `pt-18 sm:pt-20 md:pt-6` en `<main>`, garantizando que el Appbar y el BottomNav permanezcan siempre anclados y visibles en móvil como en una app nativa.
+  2. **Emisión de Facturas y Ambiente Hacienda (`app.invoices.new.tsx`):**
+     - Botones de acción reorganizados en 2 filas táctiles (Previsualizar 50% + Guardar borrador 50%, y botón Emitir 100% full-width).
+     - Estado `ambiente` enlazado reactivamente a `activeEstablishment.atv_environment` y persistencia por empresa, activando `"🟢 Producción Oficial"` de forma inmediata.
+     - Agregado switch interactivo de 1 clic para alternar entre Producción y Pruebas directamente en pantalla, sincronizando Supabase y localStorage con notificación toast.
+  3. **Limpieza de Nombres de Plantillas (`InvoiceRenderer.tsx`):**
+     - Renombrada la plantilla a **"Corporativa Pro"** y el badge a **"Oficial B2B"**. Eliminada cualquier mención a software competidor.
+  4. **Rediseño del Modal de Vista Previa de Comprobante (`app.settings.tsx` y plantillas):**
+     - Modal estructurado con Flex vertical: cabecera fija, cuerpo deslizable (`overflow-y-auto max-h-[90dvh]`), y pie de página fijo con los botones "Listo" y "Probar Impresión" siempre al alcance.
+     - Selector de plantillas optimizado en móvil como carrusel horizontal deslizable (`overflow-x-auto no-scrollbar`), ahorrando más de 100px verticales.
+     - Tablas de factura en plantillas (`TemplateCorporativa`, `TemplateModerna`, `TemplateClasica`) actualizadas con `overflow-x-auto min-w-[500px]`.
+  5. **Protección de API y Control en Centro de Mando (`app.settings.tsx` y `admin.tsx`):**
+     - Pestaña "Conexión API" oculta por defecto para clientes e inquilinos normales. Si se está en modo simulación de un cliente, el sistema evalúa estrictamente el rol del cliente y oculta la sección.
+     - En el Centro de Mando (`/admin`), se incorporó el interruptor **"Habilitar acceso API para el cliente"** en la ficha de cada empresa para desbloquear la pestaña solo a clientes autorizados.
+     - Endpoint oficial configurado como `https://go.facturaos.online/api/v1/invoices` en la interfaz y en todos los ejemplos de código (TypeScript, cURL, Python).
+* **Prevención:** Ningún modal de vista previa ni tabla debe usar anchos rígidos sin scroll horizontal en móvil. La visibilidad de secciones sensibles debe respetar el modo simulación (`!simulatedSession`) para no exponer datos de desarrollo a los clientes finales.
+
+---
+
+
 ### [2026-11-06 16:40] - Corrección Crítica: Aislamiento Total Multi-Tenant en Catálogo de Productos, Códigos CAByS y Emisión de Facturas
 * **Módulos Afectados:**
   - `src/lib/company-catalog.ts` (Nuevo motor de catálogos y CAByS estrictamente aislados por establecimiento)

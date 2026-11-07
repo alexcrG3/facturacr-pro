@@ -402,34 +402,34 @@ function GmailSyncPage() {
   const totalIvaCompras = downloadedInvoices.reduce((s, x) => s + x.totalIva, 0);
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6 pb-16">
+    <div className="mx-auto max-w-7xl space-y-6 pb-16 w-full min-w-0 overflow-x-clip">
       <PageHeader
         title="Descarga Automática de Facturas (Gmail)"
         description="Conecta tu buzón de correo para extraer automáticamente todos los archivos XML y PDF que te envían tus proveedores."
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
             {downloadedInvoices.length > 0 && (
               <button
                 type="button"
                 onClick={handleLimpiarComprobantes}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-destructive/30 bg-destructive/10 px-3.5 py-2 text-xs font-semibold text-destructive hover:bg-destructive/20 transition-colors"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-destructive/30 bg-destructive/10 px-3.5 py-2 text-xs font-semibold text-destructive hover:bg-destructive/20 transition-colors whitespace-nowrap"
                 title="Eliminar comprobantes de prueba y reiniciar a 0"
               >
-                <Trash2 className="h-4 w-4" /> Limpiar Comprobantes ({downloadedInvoices.length})
+                <Trash2 className="h-4 w-4 shrink-0" /> Limpiar ({downloadedInvoices.length})
               </button>
             )}
             <Link
               to="/app/reports"
-              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3.5 py-2 text-xs font-semibold hover:bg-muted transition-colors"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3.5 py-2 text-xs font-semibold hover:bg-muted transition-colors whitespace-nowrap"
             >
-              <BarChart3 className="h-4 w-4 text-primary" /> Ir a Reportes del Contador
+              <BarChart3 className="h-4 w-4 text-primary shrink-0" /> Reportes Contador
             </Link>
             <button
               type="button"
               onClick={() => setShowAddAccountModal(true)}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-all shadow-xs"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-all shadow-xs whitespace-nowrap"
             >
-              <Plus className="h-4 w-4" /> Vincular Cuenta Gmail
+              <Plus className="h-4 w-4 shrink-0" /> Vincular Gmail
             </button>
           </div>
         }
@@ -825,8 +825,42 @@ function GmailSyncPage() {
               </div>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
+            <div>
+              {/* ─── VISTA MÓVIL (CARDS) ─── */}
+              <div className="md:hidden divide-y divide-border">
+                {downloadedInvoices.map((inv) => (
+                  <div key={inv.id} className="p-3.5 space-y-2 text-xs">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <p className="font-bold text-foreground truncate">{inv.emisorNombre}</p>
+                        <p className="text-[11px] text-muted-foreground font-mono">
+                          Céd: {inv.emisorCedula} • {inv.fechaEmision}
+                        </p>
+                      </div>
+                      <span className="rounded bg-emerald-500/10 text-emerald-600 px-2 py-0.5 text-[10px] font-bold shrink-0">
+                        {inv.estadoHacienda}
+                      </span>
+                    </div>
+
+                    <p className="text-[11px] text-muted-foreground line-clamp-1">
+                      {inv.detallePrincipal}
+                    </p>
+
+                    <div className="flex items-center justify-between pt-1 border-t border-border/50 text-xs">
+                      <span className="font-bold text-foreground tabular-nums font-mono text-sm">
+                        {formatCRC(inv.totalComprobante)}
+                      </span>
+                      <span className="text-emerald-600 font-semibold font-mono text-[11px]">
+                        IVA Crédito: +{formatCRC(inv.totalIva)}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* ─── VISTA DESKTOP (TABLA) ─── */}
+              <div className="hidden md:block overflow-x-auto">
+                <table className="w-full text-left text-xs">
                 <thead className="bg-muted/50 font-semibold text-muted-foreground border-b border-border">
                   <tr>
                     <th className="px-3.5 py-3 whitespace-nowrap">PROVEEDOR / EMISOR</th>
@@ -865,7 +899,8 @@ function GmailSyncPage() {
                 </tbody>
               </table>
             </div>
-          )}
+          </div>
+        )}
         </div>
       )}
 

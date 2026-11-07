@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { toast } from "sonner";
 import {
   Building2,
@@ -40,6 +40,7 @@ import {
   Receipt,
   FileSpreadsheet,
   Landmark,
+  Info,
 } from "lucide-react";
 import { PageHeader } from "@/components/common/PageHeader";
 import { company } from "@/lib/mock-data";
@@ -71,6 +72,7 @@ export interface BranchItem {
   address: string;
   phone?: string;
   terminalsCount?: number;
+  isDefault?: boolean;
 }
 
 export interface TeamMember {
@@ -104,8 +106,37 @@ const activityDescriptions: Record<string, string> = {
 };
 
 function SettingsPage() {
-  const { user, refreshProfile, activeEstablishment, isSuperAdmin, setActiveEstablishment, loadEstablishments } = useApp();
+  const { user, simulatedSession, refreshProfile, activeEstablishment, isSuperAdmin, setActiveEstablishment, loadEstablishments } = useApp();
   const [active, setActive] = useState("empresa");
+
+  // Control estricto de visibilidad para la sección API:
+  // Si el SuperAdmin está en Modo Simulación de un cliente, se evalúa estrictamente el rol del cliente simulado.
+  // Solo la ve el SuperAdmin real (cuando NO está simulando) o si la empresa tiene el acceso API expresamente activado en /admin.
+  const isRealSuperAdmin = isSuperAdmin && !simulatedSession;
+
+  const isApiAllowedForCurrentEst = Boolean(
+    activeEstablishment &&
+    (
+      (activeEstablishment as any).allow_api_access === true ||
+      (typeof window !== "undefined" && localStorage.getItem(`facturaos_api_allowed_${activeEstablishment.id}`) === "true")
+    )
+  );
+
+  const canSeeApiSection = isRealSuperAdmin || isApiAllowedForCurrentEst;
+
+  const visibleSections = useMemo(() => {
+    return sections.filter((s) => {
+      if (s.id === "api") return canSeeApiSection;
+      return true;
+    });
+  }, [canSeeApiSection]);
+
+  // Si no tiene permiso de ver API y active quedó en "api", redirigir a "empresa"
+  useEffect(() => {
+    if (!canSeeApiSection && active === "api") {
+      setActive("empresa");
+    }
+  }, [canSeeApiSection, active]);
 
   // Estado Empresa - inicializado estrictamente con activeEstablishment
   const [companyName, setCompanyName] = useState(activeEstablishment?.name || activeEstablishment?.app_name || "");
@@ -209,6 +240,11 @@ function SettingsPage() {
   const [activeCodeTab, setActiveCodeTab] = useState<"ts" | "curl" | "python">("ts");
   const [testingApi, setTestingApi] = useState(false);
   const [testApiResult, setTestApiResult] = useState<any>(null);
+
+  const publicApiUrl =
+    typeof window !== "undefined" && window.location.origin && !window.location.origin.includes("localhost")
+      ? `${window.location.origin}/api/v1/invoices`
+      : "https://go.facturaos.online/api/v1/invoices";
 
   useEffect(() => {
     if (activeEstablishment?.id) {
@@ -961,35 +997,35 @@ function SettingsPage() {
   };
 
   return (
-    <div className="mx-auto max-w-7xl">
+    <div className="mx-auto max-w-7xl w-full min-w-0 overflow-x-clip">
       <PageHeader
         title="Configuración"
         description="Administra tu empresa, credenciales de Hacienda CR y equipo."
       />
 
       <div className="grid gap-6 lg:grid-cols-[240px_1fr]">
-        <nav className="space-y-0.5">
-          {sections.map((s) => {
+        <nav className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-2 lg:block lg:space-y-0.5 lg:overflow-x-visible">
+          {visibleSections.map((s) => {
             const Icon = s.icon;
             const isActive = active === s.id;
             return (
               <button
                 key={s.id}
                 onClick={() => setActive(s.id)}
-                className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                className={`flex shrink-0 items-center gap-2 rounded-xl px-3 py-2 text-xs sm:text-sm font-medium transition-colors ${
                   isActive
-                    ? "bg-primary-soft text-primary font-semibold"
+                    ? "bg-primary-soft text-primary font-bold shadow-xs"
                     : "text-muted-foreground hover:bg-muted hover:text-foreground"
                 }`}
               >
-                <Icon className="h-4 w-4" />
-                {s.label}
+                <Icon className="h-4 w-4 shrink-0" />
+                <span className="whitespace-nowrap">{s.label}</span>
               </button>
             );
           })}
         </nav>
 
-        <div className="rounded-xl border border-border bg-card p-6 shadow-soft">
+        <div className="rounded-xl border border-border bg-card p-3.5 sm:p-6 shadow-soft overflow-hidden">
           {active === "hacienda" && (
             <div className="space-y-6">
               <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
@@ -1275,7 +1311,7 @@ function SettingsPage() {
             </div>
           )}
 
-          {active === "api" && (
+          {active === "api" && canSeeApiSection && (
             <div className="space-y-6">
               <div>
                 <div className="flex items-center gap-2">
@@ -1288,8 +1324,16 @@ function SettingsPage() {
                   </span>
                 </div>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Usa estas credenciales para emitir facturas, tiquetes y notas de crédito de forma desatendida desde <strong>{activeEstablishment?.app_name || activeEstablishment?.name || "tu Software Externo"}</strong> (AvalCar, BarberApp, GasExpress o cualquier software de punto de venta).
+                  Usa estas credenciales para emitir facturas, tiquetes y notas de crédito de forma desatendida desde <strong>{activeEstablishment?.app_name || activeEstablishment?.name || "tu Software Externo"}</strong> (AvalCar, BarberApp, GasExpress, WooCommerce, Shopify o cualquier software de punto de venta).
                 </p>
+              </div>
+
+              {/* Banner informativo de uso */}
+              <div className="rounded-xl border border-blue-500/30 bg-blue-50/60 dark:bg-blue-950/20 p-3 text-xs text-blue-900 dark:text-blue-200 flex items-start gap-2.5 shadow-xs">
+                <Info className="h-4 w-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
+                <div className="leading-relaxed">
+                  <strong>¿Quién utiliza esta sección?</strong> Este módulo es <em>exclusivo para desarrolladores o comercios con sistemas externos</em> (como sistemas POS de caja física, terminales táctiles, tiendas virtuales o ERPs) que desean enviar sus ventas a Hacienda a través de FacturaOS. Si emites tus facturas directamente desde la web o la app móvil de FacturaOS, <strong>no necesitas tocar nada de esta sección</strong>.
+                </div>
               </div>
 
               {/* Banner de Empresa Asignada */}
@@ -1323,14 +1367,13 @@ function SettingsPage() {
                     <div className="flex gap-2">
                       <input
                         readOnly
-                        value={`${typeof window !== "undefined" ? window.location.origin : "http://localhost:3000"}/api/v1/invoices`}
+                        value={publicApiUrl}
                         className="h-10 w-full rounded-lg border border-border bg-muted/50 px-3 text-xs font-mono text-foreground focus:outline-none"
                       />
                       <button
                         type="button"
                         onClick={() => {
-                          const url = `${window.location.origin}/api/v1/invoices`;
-                          navigator.clipboard.writeText(url);
+                          navigator.clipboard.writeText(publicApiUrl);
                           setCopiedUrl(true);
                           toast.success("URL del endpoint copiada al portapapeles");
                           setTimeout(() => setCopiedUrl(false), 2000);
@@ -1503,7 +1546,7 @@ function SettingsPage() {
                 {activeCodeTab === "ts" && (
                   <pre className="rounded-xl bg-slate-950 text-emerald-400 p-4 overflow-x-auto text-xs font-mono leading-relaxed">
 {`// Al registrar una venta o cobro en ${activeEstablishment?.app_name || activeEstablishment?.name || "tu Software"}:
-const response = await fetch("http://localhost:3000/api/v1/invoices", {
+const response = await fetch("${publicApiUrl}", {
   method: "POST",
   headers: {
     "Content-Type": "application/json",
@@ -1540,7 +1583,7 @@ console.log("Factura emitida exitosamente:", data.clave);`}
 
                 {activeCodeTab === "curl" && (
                   <pre className="rounded-xl bg-slate-950 text-amber-300 p-4 overflow-x-auto text-xs font-mono leading-relaxed">
-{`curl -X POST "http://localhost:3000/api/v1/invoices" \\
+{`curl -X POST "${publicApiUrl}" \\
   -H "Content-Type: application/json" \\
   -H "Authorization: Bearer ${apiKey || "fct_live_tu_api_key_aqui"}" \\
   -d '{
@@ -1562,7 +1605,7 @@ console.log("Factura emitida exitosamente:", data.clave);`}
                   <pre className="rounded-xl bg-slate-950 text-sky-300 p-4 overflow-x-auto text-xs font-mono leading-relaxed">
 {`import requests
 
-url = "http://localhost:3000/api/v1/invoices"
+url = "${publicApiUrl}"
 headers = {
     "Content-Type": "application/json",
     "Authorization": "Bearer ${apiKey || "fct_live_tu_api_key_aqui"}"
@@ -2461,28 +2504,28 @@ print(response.json())`}
 
               {/* ─── MODAL DE VISTA PREVIA FLOTANTE ─── */}
               {showPreviewModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
-                  <div className="relative w-full max-w-4xl bg-background rounded-2xl border border-border shadow-2xl p-6 space-y-4 max-h-[92vh] overflow-y-auto">
-                    <div className="flex items-center justify-between border-b border-border pb-3">
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-2 sm:p-4 overflow-y-auto">
+                  <div className="relative w-full max-w-4xl bg-background rounded-2xl border border-border shadow-2xl p-3 sm:p-6 flex flex-col max-h-[90dvh] my-auto min-w-0 overflow-hidden space-y-3 sm:space-y-4">
+                    <div className="flex items-center justify-between border-b border-border pb-3 shrink-0">
                       <div>
-                        <h3 className="text-base font-bold flex items-center gap-2">
-                          <Eye className="h-5 w-5 text-primary" />
+                        <h3 className="text-sm sm:text-base font-bold flex items-center gap-2">
+                          <Eye className="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
                           Vista Previa de Comprobante Oficial
                         </h3>
-                        <p className="text-xs text-muted-foreground">
+                        <p className="text-[11px] sm:text-xs text-muted-foreground truncate max-w-xs sm:max-w-none">
                           Así se verá la factura emitida para {companyName || "tu empresa"} con su logotipo, sello oficial y cuentas.
                         </p>
                       </div>
                       <button
                         type="button"
                         onClick={() => setShowPreviewModal(false)}
-                        className="rounded-lg p-2 text-muted-foreground hover:bg-muted hover:text-foreground"
+                        className="rounded-lg p-1.5 sm:p-2 text-muted-foreground hover:bg-muted hover:text-foreground shrink-0 cursor-pointer"
                       >
                         <X className="h-5 w-5" />
                       </button>
                     </div>
 
-                    <div className="bg-muted/10 p-2 rounded-xl">
+                    <div className="bg-muted/10 p-2 sm:p-4 rounded-xl flex-1 overflow-y-auto overflow-x-hidden min-w-0">
                       <InvoiceRenderer
                         invoice={{
                           number: "00100001010000000042",
@@ -2532,22 +2575,22 @@ print(response.json())`}
                       />
                     </div>
 
-                    <div className="flex justify-between items-center pt-2 border-t border-border">
-                      <span className="text-xs text-muted-foreground">
+                    <div className="flex flex-col sm:flex-row justify-between items-center gap-2 pt-2 border-t border-border shrink-0">
+                      <span className="text-[11px] sm:text-xs text-muted-foreground text-center sm:text-left">
                         Puedes cambiar de plantilla en tiempo real usando los botones superiores.
                       </span>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
                         <button
                           type="button"
                           onClick={() => window.print()}
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold hover:bg-muted"
+                          className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold hover:bg-muted cursor-pointer"
                         >
                           <Receipt className="h-3.5 w-3.5" /> Probar Impresión
                         </button>
                         <button
                           type="button"
                           onClick={() => setShowPreviewModal(false)}
-                          className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90"
+                          className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 rounded-lg bg-primary px-4 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90 cursor-pointer"
                         >
                           Listo
                         </button>
