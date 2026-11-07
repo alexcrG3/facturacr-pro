@@ -98,8 +98,22 @@ function ClientsPage() {
   const [reportData, setReportData] = useState<SuperAdminClientReportItem[]>([]);
   const [isLoadingReport, setIsLoadingReport] = useState(false);
   const [reportSearch, setReportSearch] = useState("");
-  const [reportCompanyFilter, setReportCompanyFilter] = useState<string>("all");
+  const [reportCompanyFilter, setReportCompanyFilter] = useState<string>(() => activeEstablishment?.id || "all");
   const [reportTypeFilter, setReportTypeFilter] = useState<string>("all");
+
+  useEffect(() => {
+    if (activeEstablishment?.id) {
+      setReportCompanyFilter(activeEstablishment.id);
+    }
+  }, [activeEstablishment?.id]);
+
+  const handleOpenReport = () => {
+    if (activeEstablishment?.id) {
+      setReportCompanyFilter(activeEstablishment.id);
+    }
+    loadSuperAdminReportData();
+    setIsReportModalOpen(true);
+  };
 
   const loadSuperAdminReportData = async () => {
     setIsLoadingReport(true);
@@ -347,7 +361,8 @@ function ClientsPage() {
     const a = document.createElement("a");
     const dateStr = new Date().toISOString().slice(0, 10);
     a.href = url;
-    a.setAttribute("download", `Reporte_General_Clientes_FacturaOS_${dateStr}.csv`);
+    const currentEstCode = reportCompanyFilter === "all" ? "Todas_Empresas" : (establishments.find((e) => e.id === reportCompanyFilter)?.code || activeEstablishment?.code || "Empresa");
+    a.setAttribute("download", `Reporte_Clientes_${currentEstCode}_${dateStr}.csv`);
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -661,19 +676,16 @@ function ClientsPage() {
         description={`${clientsList.length} clientes registrados listos para facturar`}
         actions={
           <div className="flex items-center gap-2.5">
-            {/* Botón de Reporte Maestro de Clientes - EXCLUSIVO SUPERADMIN */}
+            {/* Botón de Reporte de Clientes - EXCLUSIVO SUPERADMIN */}
             {isSuperAdminUser && (
               <button
                 type="button"
-                onClick={() => {
-                  loadSuperAdminReportData();
-                  setIsReportModalOpen(true);
-                }}
+                onClick={handleOpenReport}
                 className="inline-flex items-center gap-2 rounded-lg border border-purple-500/40 bg-purple-500/10 px-3.5 py-2 text-sm font-semibold text-purple-700 hover:bg-purple-500/20 dark:text-purple-300 dark:border-purple-500/30 transition-all shadow-xs"
-                title="Generar reporte completo consolidado con todos los clientes de todas las empresas"
+                title={`Generar reporte completo de los clientes de ${activeEstablishment?.name || "esta empresa"}`}
               >
                 <FileSpreadsheet className="h-4 w-4 text-purple-600 dark:text-purple-400" />
-                <span>Reporte General</span>
+                <span>Reporte de Clientes</span>
                 <span className="inline-flex items-center gap-1 rounded bg-purple-600/15 text-purple-700 dark:text-purple-300 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider">
                   <Crown className="h-3 w-3 text-amber-500" /> SuperAdmin
                 </span>
@@ -701,16 +713,13 @@ function ClientsPage() {
                 Simulación de Inquilino Activa ({simulatedSession?.simulatedUser.name} · {simulatedSession?.simulatedUser.role?.toUpperCase()})
               </p>
               <p className="text-[11px] text-amber-800/80 dark:text-amber-300/80">
-                El botón <strong>"Reporte General"</strong> está estrictamente <strong>oculto</strong> para este usuario según la política de seguridad multi-empresa.
+                El botón <strong>"Reporte de Clientes"</strong> está estrictamente <strong>oculto</strong> para este usuario según la política de seguridad multi-empresa.
               </p>
             </div>
           </div>
           <button
             type="button"
-            onClick={() => {
-              loadSuperAdminReportData();
-              setIsReportModalOpen(true);
-            }}
+            onClick={handleOpenReport}
             className="inline-flex items-center gap-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white px-3 py-1.5 text-xs font-semibold shadow-xs transition-colors"
           >
             <Crown className="h-3.5 w-3.5" /> Abrir Reporte como SuperAdmin
@@ -1069,14 +1078,16 @@ function ClientsPage() {
                 <div>
                   <div className="flex items-center gap-2">
                     <h2 className="text-lg font-bold text-foreground">
-                      Reporte Maestro de Clientes
+                      Reporte de Clientes {activeEstablishment ? `· ${activeEstablishment.name}` : ""}
                     </h2>
                     <span className="inline-flex items-center gap-1 rounded-md bg-purple-600/15 px-2 py-0.5 text-xs font-semibold text-purple-700 dark:text-purple-300">
                       <Crown className="h-3 w-3 text-amber-500" /> Exclusivo SuperAdmin
                     </span>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Directorio integral de clientes con datos fiscales, teléfonos, correos y facturación consolidada
+                    {reportCompanyFilter === "all"
+                      ? "Directorio integral consolidado de clientes en todas las empresas de FacturaOS"
+                      : `Clientes registrados y facturados exclusivamente en ${establishments.find((e) => e.id === reportCompanyFilter)?.name || activeEstablishment?.name || "esta empresa"}`}
                   </p>
                 </div>
               </div>
@@ -1202,14 +1213,21 @@ function ClientsPage() {
                   <select
                     value={reportCompanyFilter}
                     onChange={(e) => setReportCompanyFilter(e.target.value)}
-                    className="h-9 rounded-lg border border-border bg-background px-2.5 text-xs focus:border-ring focus:outline-none"
+                    className="h-9 rounded-lg border border-border bg-background px-2.5 text-xs focus:border-ring focus:outline-none font-medium"
                   >
-                    <option value="all">Todas las Empresas (Consolidado)</option>
-                    {establishments.map((est) => (
-                      <option key={est.id} value={est.id}>
-                        {est.name} ({est.code})
+                    {activeEstablishment && (
+                      <option value={activeEstablishment.id}>
+                        📍 {activeEstablishment.name} (Empresa Actual)
                       </option>
-                    ))}
+                    )}
+                    {establishments
+                      .filter((est) => est.id !== activeEstablishment?.id)
+                      .map((est) => (
+                        <option key={est.id} value={est.id}>
+                          {est.name} ({est.code})
+                        </option>
+                      ))}
+                    <option value="all">🌐 Ver Todas las Empresas Juntas (Consolidado)</option>
                   </select>
                 </div>
 
