@@ -40,6 +40,7 @@ import { consultarContribuyenteHacienda, TaxpayerInfo } from "@/lib/taxpayer";
 import { supabase } from "@/lib/supabase";
 import { getCompanyProducts, getCompanyCabys } from "@/lib/company-catalog";
 import { useApp } from "@/contexts/AppContext";
+import { extractEstablishmentId, cleanClientAddress } from "./app.clients";
 
 export const Route = createFileRoute("/app/invoices/new")({
   validateSearch: (search: Record<string, unknown>): { clientId?: string } => {
@@ -288,11 +289,10 @@ function NewInvoice() {
           .select("*")
           .order("created_at", { ascending: false });
 
-        const filtered = (dbClients || []).filter(
-          (c: any) =>
-            (c.establishment_id && c.establishment_id === activeEstablishment.id) ||
-            estLegalIds.has(c.legal_id)
-        );
+        const filtered = (dbClients || []).filter((c: any) => {
+          const estId = extractEstablishmentId(c.address, c.legal_id, activeEstablishment.id);
+          return estId === activeEstablishment.id || estLegalIds.has(c.legal_id);
+        });
 
         setAllClients(
           filtered.map((row: any) => ({
@@ -306,7 +306,7 @@ function NewInvoice() {
             province: row.province || "San José",
             canton: row.canton || "",
             district: row.district || "",
-            address: row.address || "",
+            address: cleanClientAddress(row.address || ""),
             city: row.province || row.canton || "San José",
             economicActivity: row.economic_activity || "",
             totalSpent: 0,
