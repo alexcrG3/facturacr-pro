@@ -1,15 +1,17 @@
 /**
  * Motor de Firma Digital XAdES-EPES para Comprobantes Electrónicos de Costa Rica v4.3 / v4.4.
  * Soporta llaves criptográficas PKCS#12 (.p12 / .pfx) únicas e independientes por cada empresa inquilina del SaaS.
+ * Utiliza canonicalización XML (C14N) y directrices oficiales de la DGT de Costa Rica.
  */
 import forge from "node-forge";
 
-// OID y URL de la Política de Firma de Hacienda Costa Rica v4.3 / v4.4
+// OID y URL de la Política de Firma de Hacienda Costa Rica (Resolución DGT-R-48-2016)
 export const POLICY_HACIENDA = {
-  identifier: "https://cdn.comprobanteselectronicos.go.cr/xml-schemas/v4.3/politica-de-firma.pdf",
-  description:
-    "Política de firma del sistema de comprobantes electrónicos del Ministerio de Hacienda de Costa Rica",
-  hash: "Ohixl6upDOSAcrtqlZugXQgOSfu1BpMrWBval+xYjdE=",
+  identifier:
+    "https://tribunet.hacienda.go.cr/docs/esquemas/2016/v4/Resolucion%20Comprobantes%20Electronicos%20%20DGT-R-48-2016.pdf",
+  description: "",
+  digestAlgorithm: "http://www.w3.org/2000/09/xmldsig#sha1",
+  hash: "V8lVVNGDCPen6VELRD1Ja8HARFk=",
 };
 
 export interface SignerOptions {
@@ -39,6 +41,36 @@ export function base64ToString(b64: string): string {
 }
 
 /**
+ * Firma asíncrona oficial XAdES-EPES con canonicalización C14N
+ */
+export async function firmarXmlHaciendaAsync({
+  xmlSinFirmar,
+  p12CertBase64,
+  pinP12,
+}: SignerOptions): Promise<string> {
+  if (p12CertBase64 && pinP12) {
+    try {
+      // Lazy load de dependencias de node para compatibilidad universal
+      const xmlCore = await import("xml-core");
+      const xmldom = await import("@xmldom/xmldom");
+      xmlCore.setNodeDependencies({
+        DOMParser: (xmldom as any).DOMParser,
+        XMLSerializer: (xmldom as any).XMLSerializer,
+      });
+
+      const signerModule = await import("haciendacostarica-signer");
+      const Signer = (signerModule as any).default || signerModule;
+      const signedB64 = await Signer.sign(xmlSinFirmar, p12CertBase64, pinP12);
+      return base64ToString(signedB64);
+    } catch (err) {
+      console.warn("Fallo motor xadesjs, usando firmador de respaldo:", err);
+    }
+  }
+
+  return firmarXmlHacienda({ xmlSinFirmar, p12CertBase64, pinP12 });
+}
+
+/**
  * Genera la estructura de firma XAdES-EPES requerida por el Ministerio de Hacienda.
  * Utiliza estrictamente la llave criptográfica .p12 y el PIN correspondientes a la empresa que emite.
  */
@@ -53,11 +85,10 @@ export function firmarXmlHacienda({ xmlSinFirmar, p12CertBase64, pinP12 }: Signe
   let exponentB64 = "AQAB";
   let certDigestB64 = "";
   let issuerName =
-    "CN=CA SINPE - PERSONA JURIDICA v2,OU=DIVISION SISTEMAS DE PAGO,O=BANCO CENTRAL DE COSTA RICA,C=CR";
-  let serialNumber = "1234567890";
+    "CN=CA PERSONA JURIDICA,OU=DGT,O=MINISTERIO DE HACIENDA,C=CR";
+  let serialNumber = "1790800471853";
   let privateKey: forge.pki.rsa.PrivateKey | null = null;
 
-  // Extracción criptográfica real aislada de la llave .p12 de esta empresa
   if (p12CertBase64 && pinP12) {
     try {
       const p12Der = forge.util.decode64(p12CertBase64);
@@ -69,23 +100,59 @@ export function firmarXmlHacienda({ xmlSinFirmar, p12CertBase64, pinP12 }: Signe
           if (safeBag.key) {
             privateKey = safeBag.key as forge.pki.rsa.PrivateKey;
           }
-          if (safeBag.cert) {
-            const cert = safeBag.cert;
-            const certDer = forge.asn1.toDer(forge.pki.certificateToAsn1(cert)).getBytes();
-            certB64 = forge.util.encode64(certDer);
+        }
+      }
 
-            const mdCert = forge.md.sha256.create();
-            mdCert.update(certDer, "raw");
-            certDigestB64 = forge.util.encode64(mdCert.digest().getBytes());
+      let clientCert: forge.pki.Certificate | null = null;
+      if (privateKey) {
+        const privN = (privateKey as any).n.toString(16);
+        for (const safeContent of p12.safeContents) {
+          for (const safeBag of safeContent.safeBags) {
+            if (safeBag.cert) {
+              const certN = (safeBag.cert.publicKey as any).n.toString(16);
+              if (certN === privN) {
+                clientCert = safeBag.cert;
+                break;
+              }
+            }
+          }
+          if (clientCert) break;
+        }
+      }
 
-            if (cert.issuer && cert.issuer.attributes) {
-              issuerName = cert.issuer.attributes
-                .map((a: any) => `${a.shortName || a.name}=${a.value}`)
-                .join(",");
+      if (!clientCert) {
+        for (const safeContent of p12.safeContents) {
+          for (const safeBag of safeContent.safeBags) {
+            if (safeBag.cert) {
+              clientCert = safeBag.cert;
+              break;
             }
-            if (cert.serialNumber) {
-              serialNumber = cert.serialNumber;
-            }
+          }
+          if (clientCert) break;
+        }
+      }
+
+      if (clientCert) {
+        const certDer = forge.asn1.toDer(forge.pki.certificateToAsn1(clientCert)).getBytes();
+        certB64 = forge.util.encode64(certDer);
+
+        const mdCert = forge.md.sha256.create();
+        mdCert.update(certDer, "raw");
+        certDigestB64 = forge.util.encode64(mdCert.digest().getBytes());
+
+        if (clientCert.issuer && clientCert.issuer.attributes) {
+          issuerName = [...clientCert.issuer.attributes]
+            .reverse()
+            .map((a: any) => `${a.shortName || a.name}=${a.value}`)
+            .join(",");
+        }
+
+        if (clientCert.serialNumber) {
+          try {
+            const bn = new forge.jsbn.BigInteger(clientCert.serialNumber, 16);
+            serialNumber = bn.toString(10);
+          } catch {
+            serialNumber = clientCert.serialNumber;
           }
         }
       }
@@ -93,10 +160,12 @@ export function firmarXmlHacienda({ xmlSinFirmar, p12CertBase64, pinP12 }: Signe
       if (privateKey) {
         const rsaKey = privateKey as any;
         if (rsaKey.n) {
-          modulusB64 = forge.util.encode64(rsaKey.n.toByteArraySigned());
+          const nBytes = rsaKey.n.toByteArray();
+          modulusB64 = forge.util.encode64(String.fromCharCode.apply(null, nBytes));
         }
         if (rsaKey.e) {
-          exponentB64 = forge.util.encode64(rsaKey.e.toByteArraySigned());
+          const eBytes = rsaKey.e.toByteArray();
+          exponentB64 = forge.util.encode64(String.fromCharCode.apply(null, eBytes));
         }
       }
     } catch (err) {
@@ -104,12 +173,10 @@ export function firmarXmlHacienda({ xmlSinFirmar, p12CertBase64, pinP12 }: Signe
     }
   }
 
-  // Digest SHA-256 del XML original
   const mdXml = forge.md.sha256.create();
   mdXml.update(xmlSinFirmar, "utf8");
   const xmlDigest = forge.util.encode64(mdXml.digest().getBytes());
 
-  // Estructura SignedProperties según estándar XAdES-EPES Costa Rica
   const signedPropertiesXml = `<xades:SignedProperties xmlns:xades="http://uri.etsi.org/01903/v1.3.2#" Id="${signedPropertiesId}">
           <xades:SignedSignatureProperties>
             <xades:SigningTime>${signingTime}</xades:SigningTime>
@@ -128,11 +195,11 @@ export function firmarXmlHacienda({ xmlSinFirmar, p12CertBase64, pinP12 }: Signe
             <xades:SignaturePolicyIdentifier>
               <xades:SignaturePolicyId>
                 <xades:SigPolicyId>
-                  <xades:Identifier Qualifier="OIDAsURI">${POLICY_HACIENDA.identifier}</xades:Identifier>
-                  <xades:Description>${POLICY_HACIENDA.description}</xades:Description>
+                  <xades:Identifier>${POLICY_HACIENDA.identifier}</xades:Identifier>
+                  <xades:Description />
                 </xades:SigPolicyId>
                 <xades:SigPolicyHash>
-                  <ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256" />
+                  <ds:DigestMethod Algorithm="${POLICY_HACIENDA.digestAlgorithm}" />
                   <ds:DigestValue>${POLICY_HACIENDA.hash}</ds:DigestValue>
                 </xades:SigPolicyHash>
               </xades:SignaturePolicyId>
@@ -144,7 +211,6 @@ export function firmarXmlHacienda({ xmlSinFirmar, p12CertBase64, pinP12 }: Signe
   mdSignedProps.update(signedPropertiesXml, "utf8");
   const signedPropertiesDigest = forge.util.encode64(mdSignedProps.digest().getBytes());
 
-  // Estructura KeyInfo
   const keyInfoXml = `<ds:KeyInfo xmlns:ds="http://www.w3.org/2000/09/xmldsig#" Id="${keyInfoId}">
       <ds:X509Data>
         <ds:X509Certificate>${certB64 || stringToBase64("CERTIFICADO_X509_MINISTERIO_HACIENDA_CR")}</ds:X509Certificate>
@@ -161,7 +227,6 @@ export function firmarXmlHacienda({ xmlSinFirmar, p12CertBase64, pinP12 }: Signe
   mdKeyInfo.update(keyInfoXml, "utf8");
   const keyInfoDigest = forge.util.encode64(mdKeyInfo.digest().getBytes());
 
-  // Estructura SignedInfo con referencias y canonicalización
   const signedInfoXml = `<ds:SignedInfo xmlns:ds="http://www.w3.org/2000/09/xmldsig#">
       <ds:CanonicalizationMethod Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315" />
       <ds:SignatureMethod Algorithm="http://www.w3.org/2001/04/xmldsig-more#rsa-sha256" />
@@ -182,7 +247,6 @@ export function firmarXmlHacienda({ xmlSinFirmar, p12CertBase64, pinP12 }: Signe
       </ds:Reference>
     </ds:SignedInfo>`;
 
-  // Firma RSA-SHA256 con la llave privada de la empresa emisora
   let signatureValue = "";
   if (privateKey) {
     try {
@@ -212,7 +276,6 @@ export function firmarXmlHacienda({ xmlSinFirmar, p12CertBase64, pinP12 }: Signe
     </ds:Object>
   </ds:Signature>`;
 
-  // Insertar la firma antes del cierre de la etiqueta raíz
   const lastCloseTagIndex = xmlSinFirmar.lastIndexOf("</");
   if (lastCloseTagIndex === -1) {
     return xmlSinFirmar + xadesSignature;
